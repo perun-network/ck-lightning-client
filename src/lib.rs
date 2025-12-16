@@ -17,6 +17,6 @@ pub mod ic_params;
 pub mod invoice;
 
 // Re-exports for convenience
-pub use crate::client::client::ck_lightning_client;
+pub use crate::client::CkLightningClient;
 pub use ic_params::*;
 pub use invoice::{build_pay_invoice, print_pay_invoice};

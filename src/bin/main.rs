@@ -11,11 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 use anyhow::Result;
 use ck_lightning_client::{CKLIGHTNING_LEDGER_ID, PEM_USER_ACC_PATH};
-use std::io::{self, BufRead, Write}; // ✅ Add Write trait
-
+use cklightning::ic_types::SignedCandidInvoice;
 use clap::{Parser, Subcommand};
 use ic_agent::Identity;
 use ic_agent::{AgentError, export::Principal};
@@ -23,6 +21,7 @@ use ic_ledger_types::{AccountIdentifier, Subaccount};
 use lnp_node::ckl::agent::ICAgent;
 use lnp_node::ckl::id::{create_identity, str_home_from_path};
 use log::{error, info, warn};
+use std::io::{self, BufRead, Write}; // ✅ Add Write trait
 
 #[derive(Subcommand)]
 enum Commands {
@@ -150,6 +149,38 @@ async fn main() -> Result<()> {
 
                 info!("🧪 FetchKey: Root key loaded");
             }
+
+            "ln-address" => match get_ln_address_cli().await {
+                Ok(address) => {
+                    println!("✅ LN Address: {}", address);
+                    println!("💡 Use this address for Lightning payments!");
+                }
+                Err(e) => {
+                    error!("❌ LN Address failed: {}", e);
+                }
+            },
+
+            "ln-invoice" if parts.len() >= 3 => {
+                let amount_msat: u64 = parts[1]
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
+                let btc_address = parts[2].to_string();
+
+                match get_ln_invoice(amount_msat, btc_address).await {
+                    Ok(invoice) => {
+                        println!("✅ LN Invoice created!");
+                        println!("BOLT11: {}", invoice.invoice);
+                        println!("Amount: {:?} msat", invoice.amount_msat);
+                        println!("Payment Hash: 0x{}", hex::encode(&invoice.payment_hash));
+                        println!("Signature: {:?}", invoice.signature);
+                        println!("\n💡 Copy BOLT11 above for Lightning payment!");
+                    }
+                    Err(e) => {
+                        error!("❌ LN Invoice failed: {}", e);
+                    }
+                }
+            }
+
             "help" | "h" => {
                 println!("rpc <msg>     | Test RPC");
                 println!("p2p <msg> [id]| Test P2P");
@@ -192,4 +223,39 @@ async fn check_ckbtc_balance() -> Result<String> {
         .map_err(|e| AgentError::MessageError(format!("Failed to get user balance: {}", e)))?;
 
     Ok(format!("✅ User Balance: {}", resp_user_balance))
+}
+
+async fn get_ln_address_cli() -> Result<String, Box<dyn std::error::Error>> {
+    info!("🧪 Requesting LN Address");
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    agent.fetch_root_key().await?;
+
+    let client = ck_lightning_client::CkLightningClient::new(agent);
+    let ln_address = client.get_ln_address().await?;
+
+    info!("✅ Got LN address");
+    Ok(ln_address)
+}
+
+// ✅ NEW: Get Lightning Invoice function
+async fn get_ln_invoice(
+    amount_msat: u64,
+    btc_address: String,
+) -> Result<SignedCandidInvoice, Box<dyn std::error::Error>> {
+    info!(
+        "🧪 Requesting LN Invoice: {} msat → {}",
+        amount_msat, btc_address
+    );
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    agent.fetch_root_key().await?;
+
+    // Create CkLightningClient
+    let client = ck_lightning_client::CkLightningClient::new(agent);
+
+    let signed_invoice = client.query_ln_invoice(amount_msat, btc_address).await?;
+
+    info!("✅ Got signed invoice: {} msat", amount_msat);
+    Ok(signed_invoice)
 }

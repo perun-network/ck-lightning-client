@@ -14,6 +14,7 @@
 
 use bitcoin_hashes::Hash;
 use bitcoin_hashes::sha256;
+use candid::Principal;
 use candid::{CandidType, Deserialize, Nat};
 use lightning::ln::PaymentSecret;
 use lightning_invoice::{Currency, Invoice, InvoiceBuilder, RawInvoice};
@@ -38,6 +39,27 @@ pub struct CandidInvoice {
     pub currency: String,
     pub channel_id: Vec<u8>, // 32 bytes from ChannelId
 }
+
+#[derive(Clone, CandidType, Deserialize)]
+pub struct LnInvoiceRequest {
+    pub caller_principal: Principal, // for derivation
+    pub btc_address: String,         // deposit address verification
+    pub amount_msat: u64,            // invoice amount
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize)]
+pub struct SignedCandidInvoice {
+    pub invoice: String, // Signed BOLT11 string
+    pub amount_msat: Option<Nat>,
+    pub payment_hash: Vec<u8>,   // 32 bytes
+    pub payment_secret: Vec<u8>, // 32 bytes
+    pub timestamp: u64,
+    pub expiry_secs: Option<u64>,
+    pub currency: String,
+    pub channel_id: Vec<u8>, // 32 bytes
+    pub signature: Vec<u8>,  // ✅ NEW: Invoice signature bytes
+}
+
 // build_signed_invoice() goes here – omitted for brevity
 
 pub fn build_signed_invoice() -> Invoice {
@@ -61,15 +83,6 @@ pub fn build_signed_invoice() -> Invoice {
         .expect("sign invoice");
 
     let inv_from_signed = Invoice::from_signed(signed_invoice).expect("parse signed invoice");
-
-    // let invoice_std = InvoiceBuilder::new(Currency::Bitcoin)
-    //     .description("Test".into())
-    //     .payment_hash(payment_hash)
-    //     .payment_secret(payment_secret)
-    //     .duration_since_epoch(Duration::from_secs(1234567))
-    //     .amount_milli_satoshis(amount_to_invoice)
-    //     .build_raw()
-    //     .unwrap();
 
     return inv_from_signed;
 }
