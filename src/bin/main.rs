@@ -181,15 +181,214 @@ async fn main() -> Result<()> {
                 }
             }
 
+            // =============================================================
+            // Liquidity Pool Commands
+            // =============================================================
+            "lp-approve" if parts.len() >= 2 => {
+                let amount: u64 = parts[1]
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
+
+                match lp_approve(amount).await {
+                    Ok(block_idx) => {
+                        println!("Approved {} satoshis for LP canister", amount);
+                        println!("Block index: {}", block_idx);
+                    }
+                    Err(e) => {
+                        error!("lp-approve failed: {}", e);
+                    }
+                }
+            }
+
+            "lp-deposit" if parts.len() >= 2 => {
+                let amount: u64 = parts[1]
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
+
+                // Get balance before
+                let balance_before = get_user_ckbtc_balance().await.unwrap_or(Nat::from(0u64));
+                println!("ckBTC balance before: {} satoshis", balance_before);
+
+                match lp_deposit(amount).await {
+                    Ok(resp) => {
+                        if resp.success {
+                            // Get balance after
+                            let balance_after = get_user_ckbtc_balance().await.unwrap_or(Nat::from(0u64));
+
+                            println!("Deposited {} satoshis to LP", amount);
+                            println!("New LP balance: {} satoshis", resp.new_balance);
+                            println!("ckBTC balance after: {} satoshis", balance_after);
+                        } else {
+                            println!("Deposit failed: {:?}", resp.error);
+                        }
+                    }
+                    Err(e) => {
+                        error!("lp-deposit failed: {}", e);
+                    }
+                }
+            }
+
+            "lp-withdraw" if parts.len() >= 2 => {
+                let amount: u64 = parts[1]
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
+
+                // Get balance before
+                let balance_before = get_user_ckbtc_balance().await.unwrap_or(Nat::from(0u64));
+                println!("ckBTC balance before: {} satoshis", balance_before);
+
+                match lp_withdraw(amount).await {
+                    Ok(resp) => {
+                        if resp.success {
+                            // Get balance after
+                            let balance_after = get_user_ckbtc_balance().await.unwrap_or(Nat::from(0u64));
+
+                            println!("Withdrew {} satoshis from LP", resp.amount_withdrawn);
+                            println!("New LP balance: {} satoshis", resp.new_balance);
+                            println!("ckBTC balance after: {} satoshis", balance_after);
+                            if let Some(block_idx) = resp.block_index {
+                                println!("Block index: {}", block_idx);
+                            }
+                        } else {
+                            println!("Withdraw failed: {:?}", resp.error);
+                        }
+                    }
+                    Err(e) => {
+                        error!("lp-withdraw failed: {}", e);
+                    }
+                }
+            }
+
+            "lp-balance" => {
+                match lp_balance().await {
+                    Ok(resp) => {
+                        println!("Your LP Balance:");
+                        println!("  ckBTC: {} satoshis", resp.ckbtc_balance);
+                        println!("  BTC:   {} satoshis", resp.btc_balance);
+                    }
+                    Err(e) => {
+                        error!("lp-balance failed: {}", e);
+                    }
+                }
+            }
+
+            "lp-total" => {
+                match lp_total().await {
+                    Ok(resp) => {
+                        println!("Total LP Balance:");
+                        println!("  Total ckBTC: {} satoshis", resp.total_ckbtc);
+                        println!("  Total BTC:   {} satoshis", resp.total_btc);
+                        println!("  Depositors:  {}", resp.num_depositors);
+                    }
+                    Err(e) => {
+                        error!("lp-total failed: {}", e);
+                    }
+                }
+            }
+
+            // =============================================================
+            // BTC Liquidity Pool Commands
+            // =============================================================
+            "lp-btc-address" => {
+                match lp_btc_address().await {
+                    Ok(resp) => {
+                        println!("LP BTC Deposit Address: {}", resp.address);
+                        println!("");
+                        println!("To deposit BTC:");
+                        println!("  1. Send BTC to the address above");
+                        println!("  2. Wait for 6 confirmations");
+                        println!("  3. Run 'lp-btc-deposit' to claim your deposit");
+                    }
+                    Err(e) => {
+                        error!("lp-btc-address failed: {}", e);
+                    }
+                }
+            }
+
+            "lp-btc-deposit" => {
+                // Optional: lp-btc-deposit [txid]
+                let txid: Option<Vec<u8>> = if parts.len() >= 2 {
+                    // Parse txid from hex if provided
+                    match hex::decode(parts[1]) {
+                        Ok(bytes) => Some(bytes),
+                        Err(_) => {
+                            println!("Invalid txid hex format");
+                            continue;
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                match lp_btc_deposit(txid).await {
+                    Ok(resp) => {
+                        if resp.success {
+                            println!("BTC Deposit claimed!");
+                            println!("  Credited: {} satoshis", resp.credited_amount);
+                            println!("  New BTC balance: {} satoshis", resp.new_btc_balance);
+                        } else {
+                            println!("BTC Deposit failed: {:?}", resp.error);
+                        }
+                    }
+                    Err(e) => {
+                        error!("lp-btc-deposit failed: {}", e);
+                    }
+                }
+            }
+
+            "lp-btc-withdraw" if parts.len() >= 3 => {
+                let amount: u64 = parts[1]
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
+                let destination = parts[2].to_string();
+
+                match lp_btc_withdraw(amount, destination.clone()).await {
+                    Ok(resp) => {
+                        if resp.success {
+                            println!("BTC Withdrawal successful!");
+                            println!("  Amount: {} satoshis", resp.amount_withdrawn);
+                            println!("  Destination: {}", destination);
+                            println!("  New BTC balance: {} satoshis", resp.new_btc_balance);
+                            if let Some(txid) = resp.txid {
+                                println!("  Transaction ID: {}", txid);
+                            }
+                        } else {
+                            println!("BTC Withdrawal failed: {:?}", resp.error);
+                        }
+                    }
+                    Err(e) => {
+                        error!("lp-btc-withdraw failed: {}", e);
+                    }
+                }
+            }
+
             "help" | "h" => {
-                println!("rpc <msg>     | Test RPC");
-                println!("p2p <msg> [id]| Test P2P");
-                println!("status        | Show status");
-                println!("fetch-key     | ICAgent test");
-                println!("exit/quit     | Stop");
+                println!("=== ckLightning Client Commands ===");
+                println!("");
+                println!("ckBTC Liquidity Pool:");
+                println!("  lp-approve <amount>  | Approve canister to spend ckBTC");
+                println!("  lp-deposit <amount>  | Deposit ckBTC to liquidity pool");
+                println!("  lp-withdraw <amount> | Withdraw ckBTC from liquidity pool");
+                println!("  lp-balance           | Show your LP balance");
+                println!("  lp-total             | Show total LP balance");
+                println!("");
+                println!("BTC Liquidity Pool:");
+                println!("  lp-btc-address       | Get shared LP BTC deposit address");
+                println!("  lp-btc-deposit [txid]| Claim BTC deposit (after sending to LP address)");
+                println!("  lp-btc-withdraw <amount> <address> | Withdraw BTC from LP");
+                println!("");
+                println!("Lightning:");
+                println!("  ln-address           | Get Lightning address");
+                println!("  ln-invoice <amt> <addr> | Create Lightning invoice");
+                println!("");
+                println!("Other:");
+                println!("  fetch-key            | Check ckBTC balance");
+                println!("  status               | Show status");
+                println!("  help                 | Show this help");
+                println!("  exit/quit            | Stop");
             }
             "exit" | "quit" | "q" => break,
-            _ => println!("? {}", input),
+            _ => println!("Unknown command: {}. Type 'help' for available commands.", input),
         }
     }
 
@@ -258,4 +457,142 @@ async fn get_ln_invoice(
 
     info!("✅ Got signed invoice: {} msat", amount_msat);
     Ok(signed_invoice)
+}
+
+// =============================================================================
+// Liquidity Pool Helper Functions
+// =============================================================================
+
+use cklightning::ic_types::{
+    LpBalanceResponse, LpDepositResponse, LpWithdrawResponse, TotalLpBalanceResponse,
+    LpBtcAddressResponse, LpBtcDepositResponse, LpBtcWithdrawResponse,
+};
+use candid::Nat;
+
+/// Approve the ckLightning canister to spend caller's ckBTC (ICRC-2)
+async fn lp_approve(amount: u64) -> Result<Nat, Box<dyn std::error::Error>> {
+    info!("Approving {} satoshis for LP canister", amount);
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    agent.fetch_root_key().await?;
+
+    let can_ckl_id = Principal::from_text(CKLIGHTNING_LEDGER_ID)?;
+    let block_idx = agent.tx_icrc2_approve(can_ckl_id, amount).await?;
+
+    info!("Approval successful, block index: {}", block_idx);
+    Ok(block_idx)
+}
+
+/// Deposit ckBTC to the liquidity pool
+async fn lp_deposit(amount: u64) -> Result<LpDepositResponse, Box<dyn std::error::Error>> {
+    info!("Depositing {} satoshis to LP", amount);
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.deposit_ckbtc(amount).await?;
+
+    info!("Deposit complete: success={}", resp.success);
+    Ok(resp)
+}
+
+/// Withdraw ckBTC from the liquidity pool
+async fn lp_withdraw(amount: u64) -> Result<LpWithdrawResponse, Box<dyn std::error::Error>> {
+    info!("Withdrawing {} satoshis from LP", amount);
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.withdraw_ckbtc(amount).await?;
+
+    info!("Withdraw complete: success={}", resp.success);
+    Ok(resp)
+}
+
+/// Get caller's LP balance
+async fn lp_balance() -> Result<LpBalanceResponse, Box<dyn std::error::Error>> {
+    info!("Fetching LP balance");
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.get_my_lp_balance().await?;
+
+    info!("LP balance fetched");
+    Ok(resp)
+}
+
+/// Get total LP balance
+async fn lp_total() -> Result<TotalLpBalanceResponse, Box<dyn std::error::Error>> {
+    info!("Fetching total LP balance");
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.get_total_lp_balance().await?;
+
+    info!("Total LP balance fetched");
+    Ok(resp)
+}
+
+/// Get user's on-chain ckBTC balance
+async fn get_user_ckbtc_balance() -> Result<Nat, Box<dyn std::error::Error>> {
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    agent.fetch_root_key().await?;
+
+    let str_user = str_home_from_path(PEM_USER_ACC_PATH);
+    let usr_user_id = create_identity(Some(&str_user));
+    let usr_user_pr = usr_user_id.sender()?;
+
+    let balance = agent.icrc1_balance_of(usr_user_pr).await?;
+    Ok(balance)
+}
+
+// =============================================================================
+// BTC Liquidity Pool Helper Functions
+// =============================================================================
+
+/// Get the shared LP BTC address for deposits
+async fn lp_btc_address() -> Result<LpBtcAddressResponse, Box<dyn std::error::Error>> {
+    info!("Fetching LP BTC address");
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.get_lp_btc_address().await?;
+
+    info!("LP BTC address fetched");
+    Ok(resp)
+}
+
+/// Claim a BTC deposit to the liquidity pool
+///
+/// After sending BTC to the shared LP address and waiting for 6 confirmations,
+/// call this to credit the deposit to your LP balance.
+async fn lp_btc_deposit(txid: Option<Vec<u8>>) -> Result<LpBtcDepositResponse, Box<dyn std::error::Error>> {
+    info!("Claiming BTC deposit");
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.deposit_btc(txid, 0).await?;
+
+    info!("BTC deposit claim complete: success={}", resp.success);
+    Ok(resp)
+}
+
+/// Withdraw BTC from the liquidity pool
+async fn lp_btc_withdraw(
+    amount: u64,
+    destination: String,
+) -> Result<LpBtcWithdrawResponse, Box<dyn std::error::Error>> {
+    info!("Withdrawing {} satoshis BTC to {}", amount, destination);
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.withdraw_btc(amount, destination).await?;
+
+    info!("BTC withdraw complete: success={}", resp.success);
+    Ok(resp)
 }
