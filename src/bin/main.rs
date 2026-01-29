@@ -13,44 +13,30 @@
 //  limitations under the License.
 
 use anyhow::Result;
-use ck_lightning_client::{CKLIGHTNING_LEDGER_ID, PEM_USER_ACC_PATH};
+use ck_lightning_client::{CKLIGHTNING_LEDGER_ID, PEM_USER_ACC_PATH, PEM_NODE_ACC_PATH};
 use cklightning::ic_types::SignedCandidInvoice;
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use ic_agent::Identity;
 use ic_agent::{AgentError, export::Principal};
 use ic_ledger_types::{AccountIdentifier, Subaccount};
 use ldk_sample::{ICAgent, create_identity, str_home_from_path};
 use log::{error, info, warn};
-use std::io::{self, BufRead, Write};
+use std::io::Write;
+use std::sync::OnceLock;
 
-#[derive(Subcommand)]
-enum Commands {
-    /// Test RPC handlers
-    Rpc {
-        #[arg(short, long)]
-        msg: String,
-    },
-    /// Test P2P handlers  
-    P2p {
-        #[arg(short, long)]
-        msg: String,
-        #[arg(short, long, default_value = "test-node-123")]
-        remote_id: String,
-    },
-    /// Show mock endpoints state
-    Status,
-    // Fetches RootKey
-    FetchKey {
-        #[arg(short, long, default_value = PEM_USER_ACC_PATH)]
-        pem: String,
-    },
+// Global identity path (set at startup)
+static IDENTITY_PEM_PATH: OnceLock<String> = OnceLock::new();
+
+fn get_pem_path() -> &'static str {
+    IDENTITY_PEM_PATH.get().map(|s| s.as_str()).unwrap_or(PEM_USER_ACC_PATH)
 }
 
 #[derive(Parser)]
-#[command(name = "ckl-cli", about = "Test CKL RPC/P2P handlers")]
+#[command(name = "ckl-cli", about = "ckLightning CLI client")]
 struct Cli {
-    #[command(subcommand)]
-    command: Commands,
+    /// Identity to use: "user" or "node"
+    #[arg(short, long, default_value = "user")]
+    identity: String,
 }
 
 struct MockEndpoints;
@@ -97,7 +83,17 @@ impl MockHandler {
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
-    info!("🧪 CKL CLI Started - Interactive Mode");
+
+    let cli = Cli::parse();
+
+    // Set identity based on CLI argument
+    let pem_path = match cli.identity.as_str() {
+        "node" => PEM_NODE_ACC_PATH,
+        "user" | _ => PEM_USER_ACC_PATH,
+    };
+    IDENTITY_PEM_PATH.set(pem_path.to_string()).ok();
+
+    info!("CKL CLI Started - Identity: {} ({})", cli.identity, pem_path);
 
     let mut handler = MockHandler;
     let mut endpoints = MockEndpoints;
@@ -362,8 +358,76 @@ async fn main() -> Result<()> {
                 }
             }
 
+            // =============================================================
+            // User BTC Operations (from depositor address)
+            // =============================================================
+            "btc-address" => {
+                match get_depositor_btc_address().await {
+                    Ok(resp) => {
+                        if let Some(err) = resp.error {
+                            println!("Error: {}", err);
+                        } else {
+                            println!("Your BTC Address: {}", resp.address);
+                            println!("");
+                            println!("This address is derived from your principal via threshold ECDSA.");
+                            println!("Send BTC to this address to fund your account.");
+                        }
+                    }
+                    Err(e) => {
+                        error!("btc-address failed: {}", e);
+                    }
+                }
+            }
+
+            "btc-balance" => {
+                match get_depositor_btc_balance().await {
+                    Ok(resp) => {
+                        if let Some(err) = resp.error {
+                            println!("Error: {}", err);
+                        } else {
+                            println!("Your BTC Balance:");
+                            println!("  Address: {}", resp.address);
+                            println!("  Balance: {} satoshis", resp.balance_sat);
+                        }
+                    }
+                    Err(e) => {
+                        error!("btc-balance failed: {}", e);
+                    }
+                }
+            }
+
+            "btc-send" if parts.len() >= 3 => {
+                let amount: u64 = parts[1]
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
+                let destination = parts[2].to_string();
+
+                println!("Sending {} satoshis to {}...", amount, destination);
+
+                match send_btc_from_depositor(amount, destination.clone()).await {
+                    Ok(resp) => {
+                        if resp.success {
+                            println!("BTC sent successfully!");
+                            if let Some(txid) = resp.txid {
+                                println!("  Transaction ID: {}", txid);
+                            }
+                        } else {
+                            println!("Failed to send BTC: {:?}", resp.error);
+                        }
+                    }
+                    Err(e) => {
+                        error!("btc-send failed: {}", e);
+                    }
+                }
+            }
+
             "help" | "h" => {
                 println!("=== ckLightning Client Commands ===");
+                println!("");
+                println!("User BTC (threshold ECDSA):");
+                println!("  btc-address          | Get your BTC address (derived from principal)");
+                println!("  btc-balance          | Check your BTC balance");
+                println!("  btc-send <amt> <addr>| Send BTC from your address");
                 println!("");
                 println!("ckBTC Liquidity Pool:");
                 println!("  lp-approve <amount>  | Approve canister to spend ckBTC");
@@ -397,16 +461,16 @@ async fn main() -> Result<()> {
 }
 
 async fn check_ckbtc_balance() -> Result<String> {
-    info!("🧪 Fetching root key with PEM: {}", PEM_USER_ACC_PATH);
+    info!("Fetching root key with PEM: {}", get_pem_path());
 
     // Use your existing ICAgent from ic-lightning-relay
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
     let can_ckl_id = Principal::from_text(CKLIGHTNING_LEDGER_ID).unwrap();
     println!("ckLightning Ledger Canister ID: {:?}", can_ckl_id);
 
-    let str_user = str_home_from_path(PEM_USER_ACC_PATH);
+    let str_user = str_home_from_path(get_pem_path());
     let usr_user_id = create_identity(Some(&str_user));
     let usr_user_pr = usr_user_id.sender().unwrap();
     println!("User Principal: {:?}", usr_user_pr);
@@ -427,7 +491,7 @@ async fn check_ckbtc_balance() -> Result<String> {
 async fn get_ln_address_cli() -> Result<String, Box<dyn std::error::Error>> {
     info!("🧪 Requesting LN Address");
 
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
     let client = ck_lightning_client::CkLightningClient::new(agent);
@@ -447,7 +511,7 @@ async fn get_ln_invoice(
         amount_msat, btc_address
     );
 
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
     // Create CkLightningClient
@@ -466,6 +530,8 @@ async fn get_ln_invoice(
 use cklightning::ic_types::{
     LpBalanceResponse, LpDepositResponse, LpWithdrawResponse, TotalLpBalanceResponse,
     LpBtcAddressResponse, LpBtcDepositResponse, LpBtcWithdrawResponse,
+    // User BTC operations
+    DepositorBtcBalanceResponse, SendFromDepositorResponse,
 };
 use candid::Nat;
 
@@ -473,7 +539,7 @@ use candid::Nat;
 async fn lp_approve(amount: u64) -> Result<Nat, Box<dyn std::error::Error>> {
     info!("Approving {} satoshis for LP canister", amount);
 
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
     let can_ckl_id = Principal::from_text(CKLIGHTNING_LEDGER_ID)?;
@@ -487,7 +553,7 @@ async fn lp_approve(amount: u64) -> Result<Nat, Box<dyn std::error::Error>> {
 async fn lp_deposit(amount: u64) -> Result<LpDepositResponse, Box<dyn std::error::Error>> {
     info!("Depositing {} satoshis to LP", amount);
 
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
     let resp = agent.deposit_ckbtc(amount).await?;
@@ -500,7 +566,7 @@ async fn lp_deposit(amount: u64) -> Result<LpDepositResponse, Box<dyn std::error
 async fn lp_withdraw(amount: u64) -> Result<LpWithdrawResponse, Box<dyn std::error::Error>> {
     info!("Withdrawing {} satoshis from LP", amount);
 
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
     let resp = agent.withdraw_ckbtc(amount).await?;
@@ -513,7 +579,7 @@ async fn lp_withdraw(amount: u64) -> Result<LpWithdrawResponse, Box<dyn std::err
 async fn lp_balance() -> Result<LpBalanceResponse, Box<dyn std::error::Error>> {
     info!("Fetching LP balance");
 
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
     let resp = agent.get_my_lp_balance().await?;
@@ -526,7 +592,7 @@ async fn lp_balance() -> Result<LpBalanceResponse, Box<dyn std::error::Error>> {
 async fn lp_total() -> Result<TotalLpBalanceResponse, Box<dyn std::error::Error>> {
     info!("Fetching total LP balance");
 
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
     let resp = agent.get_total_lp_balance().await?;
@@ -537,10 +603,10 @@ async fn lp_total() -> Result<TotalLpBalanceResponse, Box<dyn std::error::Error>
 
 /// Get user's on-chain ckBTC balance
 async fn get_user_ckbtc_balance() -> Result<Nat, Box<dyn std::error::Error>> {
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
-    let str_user = str_home_from_path(PEM_USER_ACC_PATH);
+    let str_user = str_home_from_path(get_pem_path());
     let usr_user_id = create_identity(Some(&str_user));
     let usr_user_pr = usr_user_id.sender()?;
 
@@ -556,7 +622,7 @@ async fn get_user_ckbtc_balance() -> Result<Nat, Box<dyn std::error::Error>> {
 async fn lp_btc_address() -> Result<LpBtcAddressResponse, Box<dyn std::error::Error>> {
     info!("Fetching LP BTC address");
 
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
     let resp = agent.get_lp_btc_address().await?;
@@ -572,7 +638,7 @@ async fn lp_btc_address() -> Result<LpBtcAddressResponse, Box<dyn std::error::Er
 async fn lp_btc_deposit(txid: Option<Vec<u8>>) -> Result<LpBtcDepositResponse, Box<dyn std::error::Error>> {
     info!("Claiming BTC deposit");
 
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
     let resp = agent.deposit_btc(txid, 0).await?;
@@ -588,11 +654,57 @@ async fn lp_btc_withdraw(
 ) -> Result<LpBtcWithdrawResponse, Box<dyn std::error::Error>> {
     info!("Withdrawing {} satoshis BTC to {}", amount, destination);
 
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(PEM_USER_ACC_PATH)))?;
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
     let resp = agent.withdraw_btc(amount, destination).await?;
 
     info!("BTC withdraw complete: success={}", resp.success);
+    Ok(resp)
+}
+
+// =============================================================================
+// User BTC Operations Helper Functions (from depositor address)
+// =============================================================================
+
+/// Get the caller's BTC address (derived from principal via threshold ECDSA)
+async fn get_depositor_btc_address() -> Result<DepositorBtcBalanceResponse, Box<dyn std::error::Error>> {
+    info!("Fetching depositor BTC address");
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.get_depositor_btc_balance().await?;
+
+    info!("Depositor BTC address fetched");
+    Ok(resp)
+}
+
+/// Get the caller's BTC balance at their depositor address
+async fn get_depositor_btc_balance() -> Result<DepositorBtcBalanceResponse, Box<dyn std::error::Error>> {
+    info!("Fetching depositor BTC balance");
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.get_depositor_btc_balance().await?;
+
+    info!("Depositor BTC balance fetched: {} sats", resp.balance_sat);
+    Ok(resp)
+}
+
+/// Send BTC from the caller's depositor address to a destination
+async fn send_btc_from_depositor(
+    amount: u64,
+    destination: String,
+) -> Result<SendFromDepositorResponse, Box<dyn std::error::Error>> {
+    info!("Sending {} satoshis BTC to {}", amount, destination);
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.send_btc_from_depositor_address(amount, destination).await?;
+
+    info!("BTC send complete: success={}", resp.success);
     Ok(resp)
 }
