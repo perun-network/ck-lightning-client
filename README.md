@@ -86,6 +86,14 @@ Then insert that address into the invocation of the invoice generation, along wi
 ```ln-invoice <amount> <bitcoin_address>
 ```
 
+### Stop the local processes after testing
+
+When done testing, you can kill the processes with these commands:
+
+```
+./bin/bitcoin-cli -conf=$HOME/regtest/bitcoin.conf -datadir=$HOME/regtest/node1 -regtest stop
+dfx killall
+```
 
 # Copyright
 
