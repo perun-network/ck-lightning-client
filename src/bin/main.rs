@@ -421,6 +421,75 @@ async fn main() -> Result<()> {
                 }
             }
 
+            // =============================================================
+            // Offramp Commands (ckBTC → Lightning)
+            // =============================================================
+            "ckbtc-balance" => {
+                match get_user_ckbtc_balance().await {
+                    Ok(balance) => {
+                        println!("Your ckBTC Balance: {} satoshis", balance);
+                    }
+                    Err(e) => {
+                        error!("ckbtc-balance failed: {}", e);
+                    }
+                }
+            }
+
+            "offramp" if parts.len() >= 2 => {
+                let invoice = parts[1].to_string();
+                let fallback_addr: Option<String> = if parts.len() >= 3 {
+                    Some(parts[2].to_string())
+                } else {
+                    None
+                };
+
+                println!("Requesting offramp...");
+                println!("Invoice: {}...", &invoice[..invoice.len().min(60)]);
+
+                match request_offramp(invoice, fallback_addr).await {
+                    Ok(resp) => {
+                        if resp.success {
+                            println!("Offramp request submitted!");
+                            println!("");
+                            println!("  Request ID: {}", resp.request_id);
+                            if let Some(amount) = resp.amount_sats {
+                                println!("  Amount:     {} satoshis", amount);
+                            }
+                            println!("");
+                            println!("The relay will pay your invoice shortly.");
+                            println!("");
+                            println!("To check status, run:");
+                            println!("  offramp-status {}", resp.request_id);
+                            println!("");
+                            println!("(Use the Request ID above, NOT the invoice)");
+                        } else {
+                            println!("Offramp request failed: {:?}", resp.error);
+                        }
+                    }
+                    Err(e) => {
+                        error!("offramp failed: {}", e);
+                    }
+                }
+            }
+
+            "offramp-status" if parts.len() >= 2 => {
+                let request_id = parts[1].to_string();
+
+                match get_offramp_status(request_id.clone()).await {
+                    Ok(resp) => {
+                        println!("Offramp Status for {}:", request_id);
+                        println!("  State: {:?}", resp.state);
+                        println!("  Amount: {} satoshis", resp.amount_sats);
+                        if let Some(err) = resp.error {
+                            println!("  Error: {}", err);
+                        }
+                    }
+                    Err(e) => {
+                        error!("offramp-status failed: {}", e);
+                    }
+                }
+            }
+
             "help" | "h" => {
                 println!("=== ckLightning Client Commands ===");
                 println!("");
@@ -429,8 +498,15 @@ async fn main() -> Result<()> {
                 println!("  btc-balance          | Check your BTC balance");
                 println!("  btc-send <amt> <addr>| Send BTC from your address");
                 println!("");
-                println!("ckBTC Liquidity Pool:");
+                println!("ckBTC Operations:");
+                println!("  ckbtc-balance        | Check your ckBTC balance");
                 println!("  lp-approve <amount>  | Approve canister to spend ckBTC");
+                println!("");
+                println!("Offramp (ckBTC -> Lightning):");
+                println!("  offramp <invoice> [fallback_addr] | Exchange ckBTC for Lightning BTC");
+                println!("  offramp-status <id>  | Check offramp request status");
+                println!("");
+                println!("ckBTC Liquidity Pool:");
                 println!("  lp-deposit <amount>  | Deposit ckBTC to liquidity pool");
                 println!("  lp-withdraw <amount> | Withdraw ckBTC from liquidity pool");
                 println!("  lp-balance           | Show your LP balance");
@@ -532,6 +608,8 @@ use cklightning::ic_types::{
     LpBtcAddressResponse, LpBtcDepositResponse, LpBtcWithdrawResponse,
     // User BTC operations
     DepositorBtcBalanceResponse, SendFromDepositorResponse,
+    // Offramp types (ckBTC → Lightning)
+    OfframpResponse, GetOfframpStatusResponse,
 };
 use candid::Nat;
 
@@ -706,5 +784,43 @@ async fn send_btc_from_depositor(
     let resp = agent.send_btc_from_depositor_address(amount, destination).await?;
 
     info!("BTC send complete: success={}", resp.success);
+    Ok(resp)
+}
+
+// =============================================================================
+// Offramp Helper Functions (ckBTC → Lightning)
+// =============================================================================
+
+/// Request an offramp (ckBTC → Lightning)
+///
+/// User must first call lp-approve to allow the canister to take custody of ckBTC.
+/// The canister takes custody of the ckBTC and the relay pays the user's invoice.
+async fn request_offramp(
+    invoice: String,
+    fallback_btc_address: Option<String>,
+) -> Result<OfframpResponse, Box<dyn std::error::Error>> {
+    info!("Requesting offramp with invoice: {}...", &invoice[..invoice.len().min(40)]);
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.request_offramp(invoice, fallback_btc_address).await?;
+
+    info!("Offramp request complete: success={}", resp.success);
+    Ok(resp)
+}
+
+/// Get the status of an offramp request
+async fn get_offramp_status(
+    request_id: String,
+) -> Result<GetOfframpStatusResponse, Box<dyn std::error::Error>> {
+    info!("Fetching offramp status for: {}", request_id);
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.get_offramp_status(request_id).await?;
+
+    info!("Offramp status fetched");
     Ok(resp)
 }
