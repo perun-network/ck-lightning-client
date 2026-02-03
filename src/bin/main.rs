@@ -435,6 +435,44 @@ async fn main() -> Result<()> {
                 }
             }
 
+            // =============================================================
+            // ICP Commands (for anti-DDoS fee)
+            // =============================================================
+            "icp-balance" => {
+                match get_user_icp_balance().await {
+                    Ok(balance) => {
+                        // Balance is in e8s (1 ICP = 100_000_000 e8s)
+                        // Convert BigUint to string, parse to u64 for display
+                        let balance_e8s: u64 = balance.0.to_string().parse().unwrap_or(0);
+                        let icp_amount = balance_e8s as f64 / 100_000_000.0;
+                        println!("Your ICP Balance: {:.8} ICP ({} e8s)", icp_amount, balance);
+                    }
+                    Err(e) => {
+                        error!("icp-balance failed: {}", e);
+                    }
+                }
+            }
+
+            "icp-approve" if parts.len() >= 2 => {
+                let amount_icp: f64 = parts[1]
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
+                let amount_e8s = (amount_icp * 100_000_000.0) as u64;
+
+                match icp_approve(amount_e8s).await {
+                    Ok(block_idx) => {
+                        println!("Approved {} ICP ({} e8s) for canister", amount_icp, amount_e8s);
+                        println!("Block index: {}", block_idx);
+                        println!("");
+                        println!("You can now use onramp/offramp commands.");
+                        println!("(20 ICP anti-DDoS fee will be collected and refunded on success)");
+                    }
+                    Err(e) => {
+                        error!("icp-approve failed: {}", e);
+                    }
+                }
+            }
+
             "offramp" if parts.len() >= 2 => {
                 let invoice = parts[1].to_string();
                 let fallback_addr: Option<String> = if parts.len() >= 3 {
@@ -498,11 +536,17 @@ async fn main() -> Result<()> {
                 println!("  btc-balance          | Check your BTC balance");
                 println!("  btc-send <amt> <addr>| Send BTC from your address");
                 println!("");
+                println!("ICP Operations (anti-DDoS fee):");
+                println!("  icp-balance          | Check your ICP balance");
+                println!("  icp-approve <amount> | Approve ICP for canister (amount in ICP, e.g. 21)");
+                println!("  NOTE: Onramp/offramp require 20 ICP approval (refunded on success)");
+                println!("");
                 println!("ckBTC Operations:");
                 println!("  ckbtc-balance        | Check your ckBTC balance");
                 println!("  lp-approve <amount>  | Approve canister to spend ckBTC");
                 println!("");
                 println!("Offramp (ckBTC -> Lightning):");
+                println!("  REQUIRES: icp-approve 21 && lp-approve <ckBTC amount>");
                 println!("  offramp <invoice> [fallback_addr] | Exchange ckBTC for Lightning BTC");
                 println!("  offramp-status <id>  | Check offramp request status");
                 println!("");
@@ -825,4 +869,36 @@ async fn get_offramp_status(
 
     info!("Offramp status fetched");
     Ok(resp)
+}
+
+// =============================================================================
+// ICP Operations Helper Functions (for anti-DDoS fee)
+// =============================================================================
+
+
+/// Get user's ICP balance
+async fn get_user_icp_balance() -> Result<Nat, Box<dyn std::error::Error>> {
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    let str_user = str_home_from_path(get_pem_path());
+    let usr_user_id = create_identity(Some(&str_user));
+    let usr_user_pr = usr_user_id.sender()?;
+
+    let balance = agent.icp_balance_of(usr_user_pr).await?;
+    Ok(balance)
+}
+
+/// Approve the ckLightning canister to spend caller's ICP (ICRC-2)
+async fn icp_approve(amount_e8s: u64) -> Result<Nat, Box<dyn std::error::Error>> {
+    info!("Approving {} e8s ICP for canister", amount_e8s);
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    let can_ckl_id = Principal::from_text(CKLIGHTNING_LEDGER_ID)?;
+    let block_idx = agent.tx_icp_icrc2_approve(can_ckl_id, amount_e8s).await?;
+
+    info!("ICP approval successful, block index: {}", block_idx);
+    Ok(block_idx)
 }
