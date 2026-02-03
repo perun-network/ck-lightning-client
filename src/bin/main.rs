@@ -543,12 +543,14 @@ async fn check_ckbtc_balance() -> Result<String> {
     let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
     agent.fetch_root_key().await?;
 
-    let can_ckl_id = Principal::from_text(CKLIGHTNING_LEDGER_ID).unwrap();
+    let can_ckl_id = Principal::from_text(CKLIGHTNING_LEDGER_ID)
+        .map_err(|e| AgentError::MessageError(format!("Invalid canister ID: {}", e)))?;
     println!("ckLightning Ledger Canister ID: {:?}", can_ckl_id);
 
     let str_user = str_home_from_path(get_pem_path());
     let usr_user_id = create_identity(Some(&str_user));
-    let usr_user_pr = usr_user_id.sender().unwrap();
+    let usr_user_pr = usr_user_id.sender()
+        .map_err(|e| AgentError::MessageError(format!("Failed to get principal from identity: {}", e)))?;
     println!("User Principal: {:?}", usr_user_pr);
 
     let zero_subaccount = Subaccount([0; 32]);
