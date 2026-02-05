@@ -528,6 +528,196 @@ async fn main() -> Result<()> {
                 }
             }
 
+            // =========================================================
+            // Onramp Commands (Lightning → ckBTC)
+            // =========================================================
+
+            "request-onramp" if parts.len() >= 2 => {
+                let amount_sats: u64 = match parts[1].parse() {
+                    Ok(amt) => amt,
+                    Err(_) => {
+                        println!("Invalid amount. Usage: request-onramp <amount_sats>");
+                        continue;
+                    }
+                };
+
+                println!("Requesting onramp invoice for {} sats...", amount_sats);
+                match request_onramp_invoice(amount_sats).await {
+                    Ok(resp) => {
+                        if resp.success {
+                            println!("Onramp request submitted!");
+                            println!("");
+                            println!("  Request ID: {}", resp.request_id);
+                            println!("");
+                            println!("Relay will create invoice shortly. Poll with:");
+                            println!("  get-invoice {}", resp.request_id);
+                        } else {
+                            println!("Onramp request failed: {:?}", resp.error);
+                        }
+                    }
+                    Err(e) => {
+                        error!("request-onramp failed: {}", e);
+                    }
+                }
+            }
+
+            "get-invoice" if parts.len() >= 2 => {
+                let request_id = parts[1].to_string();
+
+                match get_invoice(request_id.clone()).await {
+                    Ok(resp) => {
+                        println!("Invoice Status for {}:", request_id);
+                        println!("  State: {:?}", resp.state);
+                        if let Some(invoice) = resp.invoice {
+                            println!("  Invoice: {}", invoice);
+                        }
+                        if let Some(err) = resp.error {
+                            println!("  Error: {}", err);
+                        }
+                    }
+                    Err(e) => {
+                        error!("get-invoice failed: {}", e);
+                    }
+                }
+            }
+
+            // =========================================================
+            // Test/Debug Commands
+            // =========================================================
+
+            "set-test-timeouts" if parts.len() >= 3 => {
+                let onramp_ns: u64 = match parts[1].parse() {
+                    Ok(ns) => ns,
+                    Err(_) => {
+                        println!("Invalid timeout. Usage: set-test-timeouts <onramp_ns> <offramp_ns>");
+                        continue;
+                    }
+                };
+                let offramp_ns: u64 = match parts[2].parse() {
+                    Ok(ns) => ns,
+                    Err(_) => {
+                        println!("Invalid timeout. Usage: set-test-timeouts <onramp_ns> <offramp_ns>");
+                        continue;
+                    }
+                };
+
+                match set_test_timeouts(onramp_ns, offramp_ns).await {
+                    Ok(_) => {
+                        if onramp_ns == 0 && offramp_ns == 0 {
+                            println!("Test timeouts reset to defaults");
+                        } else {
+                            println!("Test timeouts set: onramp={}ns, offramp={}ns", onramp_ns, offramp_ns);
+                        }
+                    }
+                    Err(e) => {
+                        error!("set-test-timeouts failed: {}", e);
+                    }
+                }
+            }
+
+            "check-expired-swaps" => {
+                println!("Triggering expired swap check...");
+                match check_expired_swaps().await {
+                    Ok(_) => {
+                        println!("Expired swap check complete");
+                    }
+                    Err(e) => {
+                        error!("check-expired-swaps failed: {}", e);
+                    }
+                }
+            }
+
+            "expired-counts" => {
+                match get_expired_swap_counts().await {
+                    Ok((onramp, offramp)) => {
+                        println!("Expired swap counts:");
+                        println!("  Onramp:  {}", onramp);
+                        println!("  Offramp: {}", offramp);
+                    }
+                    Err(e) => {
+                        error!("expired-counts failed: {}", e);
+                    }
+                }
+            }
+
+            // =========================================================
+            // Relay Registration Commands
+            // =========================================================
+
+            "register-relay" if parts.len() >= 2 => {
+                let pubkey_hex = parts[1];
+                let node_pubkey = match hex::decode(pubkey_hex) {
+                    Ok(bytes) => bytes,
+                    Err(_) => {
+                        println!("Invalid hex for node pubkey");
+                        continue;
+                    }
+                };
+
+                if node_pubkey.len() != 33 {
+                    println!("Node pubkey must be 33 bytes (compressed secp256k1)");
+                    continue;
+                }
+
+                println!("Registering relay with node pubkey: {}", pubkey_hex);
+                match register_relay(node_pubkey).await {
+                    Ok(resp) => {
+                        if resp.success {
+                            println!("Relay registered successfully!");
+                            println!("Invoice verification is now enabled.");
+                        } else {
+                            println!("Registration failed: {:?}", resp.error);
+                        }
+                    }
+                    Err(e) => {
+                        error!("register-relay failed: {}", e);
+                    }
+                }
+            }
+
+            "relay-info" => {
+                match get_relay_info().await {
+                    Ok(info) => {
+                        if info.registered {
+                            println!("Relay Registration:");
+                            println!("  Registered: true");
+                            if let Some(principal) = info.principal {
+                                println!("  Principal:  {}", principal);
+                            }
+                            if let Some(pubkey) = info.node_pubkey {
+                                println!("  Node Pubkey: {}", hex::encode(&pubkey));
+                            }
+                            if let Some(active) = info.is_active {
+                                println!("  Active:     {}", active);
+                            }
+                        } else {
+                            println!("No relay registered");
+                        }
+                    }
+                    Err(e) => {
+                        error!("relay-info failed: {}", e);
+                    }
+                }
+            }
+
+            "rate-limit" => {
+                match get_rate_limit_status().await {
+                    Ok(status) => {
+                        println!("Rate Limit Status:");
+                        println!("  Onramp:  {}/{} requests used", status.onramp_requests, status.max_onramp_per_window);
+                        println!("  Offramp: {}/{} requests used", status.offramp_requests, status.max_offramp_per_window);
+                        if status.window_resets_in_seconds > 0 {
+                            let mins = status.window_resets_in_seconds / 60;
+                            let secs = status.window_resets_in_seconds % 60;
+                            println!("  Window resets in: {}m {}s", mins, secs);
+                        }
+                    }
+                    Err(e) => {
+                        error!("rate-limit failed: {}", e);
+                    }
+                }
+            }
+
             "help" | "h" => {
                 println!("=== ckLightning Client Commands ===");
                 println!("");
@@ -544,6 +734,11 @@ async fn main() -> Result<()> {
                 println!("ckBTC Operations:");
                 println!("  ckbtc-balance        | Check your ckBTC balance");
                 println!("  lp-approve <amount>  | Approve canister to spend ckBTC");
+                println!("");
+                println!("Onramp (Lightning -> ckBTC):");
+                println!("  REQUIRES: icp-approve 21");
+                println!("  request-onramp <sats> | Request invoice to receive ckBTC");
+                println!("  get-invoice <id>      | Get invoice for request (poll until ready)");
                 println!("");
                 println!("Offramp (ckBTC -> Lightning):");
                 println!("  REQUIRES: icp-approve 21 && lp-approve <ckBTC amount>");
@@ -564,6 +759,14 @@ async fn main() -> Result<()> {
                 println!("Lightning:");
                 println!("  ln-address           | Get Lightning address");
                 println!("  ln-invoice <amt> <addr> | Create Lightning invoice");
+                println!("");
+                println!("Relay Registration (for relay operators):");
+                println!("  register-relay <pubkey_hex> | Register relay with Lightning node pubkey");
+                println!("  relay-info           | Show registered relay info");
+                println!("");
+                println!("Rate Limiting:");
+                println!("  rate-limit           | Show your rate limit status");
+                println!("  (Max 10 onramp + 10 offramp requests per hour)");
                 println!("");
                 println!("Other:");
                 println!("  fetch-key            | Check ckBTC balance");
@@ -656,6 +859,12 @@ use cklightning::ic_types::{
     DepositorBtcBalanceResponse, SendFromDepositorResponse,
     // Offramp types (ckBTC → Lightning)
     OfframpResponse, GetOfframpStatusResponse,
+    // Onramp types (Lightning → ckBTC)
+    OnrampInvoiceResponse, GetInvoiceResponse,
+    // Relay registration types
+    RegisterRelayResponse, GetRelayInfoResponse,
+    // Rate limiting types
+    RateLimitStatus,
 };
 use candid::Nat;
 
@@ -901,4 +1110,139 @@ async fn icp_approve(amount_e8s: u64) -> Result<Nat, Box<dyn std::error::Error>>
 
     info!("ICP approval successful, block index: {}", block_idx);
     Ok(block_idx)
+}
+
+// =============================================================================
+// Onramp Helper Functions (Lightning → ckBTC)
+// =============================================================================
+
+/// Request an onramp invoice (Lightning → ckBTC)
+///
+/// User must first call icp-approve to allow the canister to collect the 20 ICP anti-DDoS fee.
+/// The fee is refunded on successful completion.
+async fn request_onramp_invoice(
+    amount_sats: u64,
+) -> Result<OnrampInvoiceResponse, Box<dyn std::error::Error>> {
+    info!("Requesting onramp invoice for {} sats", amount_sats);
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    // Get the user's principal (recipient of ckBTC)
+    let str_user = str_home_from_path(get_pem_path());
+    let usr_user_id = create_identity(Some(&str_user));
+    let recipient = usr_user_id.sender()?;
+
+    let resp = agent.request_onramp_invoice(recipient, amount_sats).await?;
+
+    info!("Onramp invoice request complete: success={}", resp.success);
+    Ok(resp)
+}
+
+/// Get the status/invoice for an onramp request
+async fn get_invoice(
+    request_id: String,
+) -> Result<GetInvoiceResponse, Box<dyn std::error::Error>> {
+    info!("Fetching invoice for request: {}", request_id);
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.get_invoice(request_id).await?;
+
+    info!("Invoice status fetched");
+    Ok(resp)
+}
+
+// =============================================================================
+// Test/Debug Helper Functions
+// =============================================================================
+
+/// Set test timeouts for swap expiry (for E2E testing)
+/// Pass 0,0 to reset to defaults
+async fn set_test_timeouts(
+    onramp_ns: u64,
+    offramp_ns: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    info!("Setting test timeouts: onramp={}ns, offramp={}ns", onramp_ns, offramp_ns);
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    agent.set_test_timeouts(onramp_ns, offramp_ns).await?;
+
+    info!("Test timeouts set");
+    Ok(())
+}
+
+/// Manually trigger expired swap check
+async fn check_expired_swaps() -> Result<(), Box<dyn std::error::Error>> {
+    info!("Triggering expired swap check");
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    agent.check_expired_swaps().await?;
+
+    info!("Expired swap check complete");
+    Ok(())
+}
+
+/// Get expired swap counts
+async fn get_expired_swap_counts() -> Result<(u64, u64), Box<dyn std::error::Error>> {
+    info!("Fetching expired swap counts");
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    let (onramp, offramp) = agent.get_expired_swap_counts().await?;
+
+    info!("Expired counts: onramp={}, offramp={}", onramp, offramp);
+    Ok((onramp, offramp))
+}
+
+// =============================================================================
+// Relay Registration Helper Functions
+// =============================================================================
+
+/// Register a relay with its Lightning node pubkey
+///
+/// The relay must call this before submitting invoices for onramp requests.
+/// This enables invoice verification to prevent invoice substitution attacks.
+async fn register_relay(node_pubkey: Vec<u8>) -> Result<RegisterRelayResponse, Box<dyn std::error::Error>> {
+    info!("Registering relay with node pubkey: {}", hex::encode(&node_pubkey));
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.register_relay(node_pubkey).await?;
+
+    info!("Relay registration complete: success={}", resp.success);
+    Ok(resp)
+}
+
+/// Get information about the registered relay
+async fn get_relay_info() -> Result<GetRelayInfoResponse, Box<dyn std::error::Error>> {
+    info!("Fetching relay info");
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.get_relay_info().await?;
+
+    info!("Relay info fetched: registered={}", resp.registered);
+    Ok(resp)
+}
+
+/// Get the caller's rate limit status
+async fn get_rate_limit_status() -> Result<RateLimitStatus, Box<dyn std::error::Error>> {
+    info!("Fetching rate limit status");
+
+    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
+    agent.fetch_root_key().await?;
+
+    let resp = agent.get_rate_limit_status().await?;
+
+    info!("Rate limit status fetched");
+    Ok(resp)
 }
