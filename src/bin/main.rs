@@ -12,14 +12,12 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
+mod commands;
+
 use anyhow::Result;
-use ck_lightning_client::{CKLIGHTNING_LEDGER_ID, PEM_USER_ACC_PATH, PEM_NODE_ACC_PATH};
-use cklightning::ic_types::SignedCandidInvoice;
+use candid::Nat;
+use ck_lightning_client::{PEM_USER_ACC_PATH, PEM_NODE_ACC_PATH};
 use clap::Parser;
-use ic_agent::Identity;
-use ic_agent::{AgentError, export::Principal};
-use ic_ledger_types::{AccountIdentifier, Subaccount};
-use ldk_sample::{ICAgent, create_identity, str_home_from_path};
 use log::{error, info, warn};
 use std::io::Write;
 use std::sync::OnceLock;
@@ -117,42 +115,40 @@ async fn main() -> Result<()> {
             "rpc" if parts.len() > 1 => {
                 let client_id = 42;
                 match handler.handle_rpc(&mut endpoints, client_id, parts[1]) {
-                    Ok(_) => info!("✅ RPC OK"),
-                    Err(e) => error!("❌ RPC: {}", e),
+                    Ok(_) => info!("RPC OK"),
+                    Err(e) => error!("RPC: {}", e),
                 }
             }
             "p2p" if parts.len() > 1 => {
                 let msg = parts[1];
                 let remote_id = parts.get(2).unwrap_or(&"test-node-123");
                 match handler.handle_p2p(&mut endpoints, remote_id, msg) {
-                    Ok(_) => info!("✅ P2P OK"),
-                    Err(e) => error!("❌ P2P: {}", e),
+                    Ok(_) => info!("P2P OK"),
+                    Err(e) => error!("P2P: {}", e),
                 }
             }
             "status" => {
-                info!("🧪 Endpoints: OK | Handler: Ready");
+                info!("Endpoints: OK | Handler: Ready");
             }
             "fetch-key" => {
-                // Your ICAgent logic here
-                match check_ckbtc_balance().await {
+                match commands::admin::check_ckbtc_balance().await {
                     Ok(info) => {
-                        println!("✅ {}", info);
+                        println!("{}", info);
                     }
                     Err(e) => {
-                        error!("❌ FetchKey failed: {}", e);
+                        error!("FetchKey failed: {}", e);
                     }
                 }
 
-                info!("🧪 FetchKey: Root key loaded");
+                info!("FetchKey: Root key loaded");
             }
 
-            "ln-address" => match get_ln_address_cli().await {
+            "ln-address" => match commands::admin::get_ln_address_cli().await {
                 Ok(address) => {
-                    println!("✅ LN Address: {}", address);
-                    println!("💡 Use this address for Lightning payments!");
+                    println!("LN Address: {}", address);
                 }
                 Err(e) => {
-                    error!("❌ LN Address failed: {}", e);
+                    error!("LN Address failed: {}", e);
                 }
             },
 
@@ -162,17 +158,17 @@ async fn main() -> Result<()> {
                     .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
                 let btc_address = parts[2].to_string();
 
-                match get_ln_invoice(amount_msat, btc_address).await {
+                match commands::admin::get_ln_invoice(amount_msat, btc_address).await {
                     Ok(invoice) => {
-                        println!("✅ LN Invoice created!");
+                        println!("LN Invoice created!");
                         println!("BOLT11: {}", invoice.invoice);
                         println!("Amount: {:?} msat", invoice.amount_msat);
                         println!("Payment Hash: 0x{}", hex::encode(&invoice.payment_hash));
                         println!("Signature: {:?}", invoice.signature);
-                        println!("\n💡 Copy BOLT11 above for Lightning payment!");
+                        println!("\nCopy BOLT11 above for Lightning payment!");
                     }
                     Err(e) => {
-                        error!("❌ LN Invoice failed: {}", e);
+                        error!("LN Invoice failed: {}", e);
                     }
                 }
             }
@@ -185,7 +181,7 @@ async fn main() -> Result<()> {
                     .parse()
                     .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
 
-                match lp_approve(amount).await {
+                match commands::lp::lp_approve(amount).await {
                     Ok(block_idx) => {
                         println!("Approved {} satoshis for LP canister", amount);
                         println!("Block index: {}", block_idx);
@@ -202,14 +198,14 @@ async fn main() -> Result<()> {
                     .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
 
                 // Get balance before
-                let balance_before = get_user_ckbtc_balance().await.unwrap_or(Nat::from(0u64));
+                let balance_before = commands::swap::get_user_ckbtc_balance().await.unwrap_or(Nat::from(0u64));
                 println!("ckBTC balance before: {} satoshis", balance_before);
 
-                match lp_deposit(amount).await {
+                match commands::lp::lp_deposit(amount).await {
                     Ok(resp) => {
                         if resp.success {
                             // Get balance after
-                            let balance_after = get_user_ckbtc_balance().await.unwrap_or(Nat::from(0u64));
+                            let balance_after = commands::swap::get_user_ckbtc_balance().await.unwrap_or(Nat::from(0u64));
 
                             println!("Deposited {} satoshis to LP", amount);
                             println!("New LP balance: {} satoshis", resp.new_balance);
@@ -230,14 +226,14 @@ async fn main() -> Result<()> {
                     .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
 
                 // Get balance before
-                let balance_before = get_user_ckbtc_balance().await.unwrap_or(Nat::from(0u64));
+                let balance_before = commands::swap::get_user_ckbtc_balance().await.unwrap_or(Nat::from(0u64));
                 println!("ckBTC balance before: {} satoshis", balance_before);
 
-                match lp_withdraw(amount).await {
+                match commands::lp::lp_withdraw(amount).await {
                     Ok(resp) => {
                         if resp.success {
                             // Get balance after
-                            let balance_after = get_user_ckbtc_balance().await.unwrap_or(Nat::from(0u64));
+                            let balance_after = commands::swap::get_user_ckbtc_balance().await.unwrap_or(Nat::from(0u64));
 
                             println!("Withdrew {} satoshis from LP", resp.amount_withdrawn);
                             println!("New LP balance: {} satoshis", resp.new_balance);
@@ -256,7 +252,7 @@ async fn main() -> Result<()> {
             }
 
             "lp-balance" => {
-                match lp_balance().await {
+                match commands::lp::lp_balance().await {
                     Ok(resp) => {
                         println!("Your LP Balance:");
                         println!("  ckBTC: {} satoshis", resp.ckbtc_balance);
@@ -269,7 +265,7 @@ async fn main() -> Result<()> {
             }
 
             "lp-total" => {
-                match lp_total().await {
+                match commands::lp::lp_total().await {
                     Ok(resp) => {
                         println!("Total LP Balance:");
                         println!("  Total ckBTC: {} satoshis", resp.total_ckbtc);
@@ -286,7 +282,7 @@ async fn main() -> Result<()> {
             // BTC Liquidity Pool Commands
             // =============================================================
             "lp-btc-address" => {
-                match lp_btc_address().await {
+                match commands::lp::lp_btc_address().await {
                     Ok(resp) => {
                         println!("LP BTC Deposit Address: {}", resp.address);
                         println!("");
@@ -316,7 +312,7 @@ async fn main() -> Result<()> {
                     None
                 };
 
-                match lp_btc_deposit(txid).await {
+                match commands::lp::lp_btc_deposit(txid).await {
                     Ok(resp) => {
                         if resp.success {
                             println!("BTC Deposit claimed!");
@@ -338,7 +334,7 @@ async fn main() -> Result<()> {
                     .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
                 let destination = parts[2].to_string();
 
-                match lp_btc_withdraw(amount, destination.clone()).await {
+                match commands::lp::lp_btc_withdraw(amount, destination.clone()).await {
                     Ok(resp) => {
                         if resp.success {
                             println!("BTC Withdrawal successful!");
@@ -362,7 +358,7 @@ async fn main() -> Result<()> {
             // User BTC Operations (from depositor address)
             // =============================================================
             "btc-address" => {
-                match get_depositor_btc_address().await {
+                match commands::btc::get_depositor_btc_address().await {
                     Ok(resp) => {
                         if let Some(err) = resp.error {
                             println!("Error: {}", err);
@@ -380,7 +376,7 @@ async fn main() -> Result<()> {
             }
 
             "btc-balance" => {
-                match get_depositor_btc_balance().await {
+                match commands::btc::get_depositor_btc_balance().await {
                     Ok(resp) => {
                         if let Some(err) = resp.error {
                             println!("Error: {}", err);
@@ -404,7 +400,7 @@ async fn main() -> Result<()> {
 
                 println!("Sending {} satoshis to {}...", amount, destination);
 
-                match send_btc_from_depositor(amount, destination.clone()).await {
+                match commands::btc::send_btc_from_depositor(amount, destination.clone()).await {
                     Ok(resp) => {
                         if resp.success {
                             println!("BTC sent successfully!");
@@ -422,10 +418,10 @@ async fn main() -> Result<()> {
             }
 
             // =============================================================
-            // Offramp Commands (ckBTC → Lightning)
+            // Offramp Commands (ckBTC -> Lightning)
             // =============================================================
             "ckbtc-balance" => {
-                match get_user_ckbtc_balance().await {
+                match commands::swap::get_user_ckbtc_balance().await {
                     Ok(balance) => {
                         println!("Your ckBTC Balance: {} satoshis", balance);
                     }
@@ -439,10 +435,9 @@ async fn main() -> Result<()> {
             // ICP Commands (for anti-DDoS fee)
             // =============================================================
             "icp-balance" => {
-                match get_user_icp_balance().await {
+                match commands::swap::get_user_icp_balance().await {
                     Ok(balance) => {
                         // Balance is in e8s (1 ICP = 100_000_000 e8s)
-                        // Convert BigUint to string, parse to u64 for display
                         let balance_e8s: u64 = balance.0.to_string().parse().unwrap_or(0);
                         let icp_amount = balance_e8s as f64 / 100_000_000.0;
                         println!("Your ICP Balance: {:.8} ICP ({} e8s)", icp_amount, balance);
@@ -459,7 +454,7 @@ async fn main() -> Result<()> {
                     .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
                 let amount_e8s = (amount_icp * 100_000_000.0) as u64;
 
-                match icp_approve(amount_e8s).await {
+                match commands::swap::icp_approve(amount_e8s).await {
                     Ok(block_idx) => {
                         println!("Approved {} ICP ({} e8s) for canister", amount_icp, amount_e8s);
                         println!("Block index: {}", block_idx);
@@ -484,7 +479,7 @@ async fn main() -> Result<()> {
                 println!("Requesting offramp...");
                 println!("Invoice: {}...", &invoice[..invoice.len().min(60)]);
 
-                match request_offramp(invoice, fallback_addr).await {
+                match commands::swap::request_offramp(invoice, fallback_addr).await {
                     Ok(resp) => {
                         if resp.success {
                             println!("Offramp request submitted!");
@@ -513,7 +508,7 @@ async fn main() -> Result<()> {
             "offramp-status" if parts.len() >= 2 => {
                 let request_id = parts[1].to_string();
 
-                match get_offramp_status(request_id.clone()).await {
+                match commands::swap::get_offramp_status(request_id.clone()).await {
                     Ok(resp) => {
                         println!("Offramp Status for {}:", request_id);
                         println!("  State: {:?}", resp.state);
@@ -529,7 +524,7 @@ async fn main() -> Result<()> {
             }
 
             // =========================================================
-            // Onramp Commands (Lightning → ckBTC)
+            // Onramp Commands (Lightning -> ckBTC)
             // =========================================================
 
             "request-onramp" if parts.len() >= 2 => {
@@ -542,7 +537,7 @@ async fn main() -> Result<()> {
                 };
 
                 println!("Requesting onramp invoice for {} sats...", amount_sats);
-                match request_onramp_invoice(amount_sats).await {
+                match commands::swap::request_onramp_invoice(amount_sats).await {
                     Ok(resp) => {
                         if resp.success {
                             println!("Onramp request submitted!");
@@ -564,7 +559,7 @@ async fn main() -> Result<()> {
             "get-invoice" if parts.len() >= 2 => {
                 let request_id = parts[1].to_string();
 
-                match get_invoice(request_id.clone()).await {
+                match commands::swap::get_invoice(request_id.clone()).await {
                     Ok(resp) => {
                         println!("Invoice Status for {}:", request_id);
                         println!("  State: {:?}", resp.state);
@@ -601,7 +596,7 @@ async fn main() -> Result<()> {
                     }
                 };
 
-                match set_test_timeouts(onramp_ns, offramp_ns).await {
+                match commands::admin::set_test_timeouts(onramp_ns, offramp_ns).await {
                     Ok(_) => {
                         if onramp_ns == 0 && offramp_ns == 0 {
                             println!("Test timeouts reset to defaults");
@@ -617,7 +612,7 @@ async fn main() -> Result<()> {
 
             "check-expired-swaps" => {
                 println!("Triggering expired swap check...");
-                match check_expired_swaps().await {
+                match commands::admin::check_expired_swaps().await {
                     Ok(_) => {
                         println!("Expired swap check complete");
                     }
@@ -628,7 +623,7 @@ async fn main() -> Result<()> {
             }
 
             "expired-counts" => {
-                match get_expired_swap_counts().await {
+                match commands::admin::get_expired_swap_counts().await {
                     Ok((onramp, offramp)) => {
                         println!("Expired swap counts:");
                         println!("  Onramp:  {}", onramp);
@@ -660,7 +655,7 @@ async fn main() -> Result<()> {
                 }
 
                 println!("Registering relay with node pubkey: {}", pubkey_hex);
-                match register_relay(node_pubkey).await {
+                match commands::admin::register_relay(node_pubkey).await {
                     Ok(resp) => {
                         if resp.success {
                             println!("Relay registered successfully!");
@@ -676,7 +671,7 @@ async fn main() -> Result<()> {
             }
 
             "relay-info" => {
-                match get_relay_info().await {
+                match commands::admin::get_relay_info().await {
                     Ok(info) => {
                         if info.registered {
                             println!("Relay Registration:");
@@ -701,7 +696,7 @@ async fn main() -> Result<()> {
             }
 
             "rate-limit" => {
-                match get_rate_limit_status().await {
+                match commands::admin::get_rate_limit_status().await {
                     Ok(status) => {
                         println!("Rate Limit Status:");
                         println!("  Onramp:  {}/{} requests used", status.onramp_requests, status.max_onramp_per_window);
@@ -779,470 +774,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    info!("👋 CKL CLI stopped");
+    info!("CKL CLI stopped");
     Ok(())
-}
-
-async fn check_ckbtc_balance() -> Result<String> {
-    info!("Fetching root key with PEM: {}", get_pem_path());
-
-    // Use your existing ICAgent from ic-lightning-relay
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let can_ckl_id = Principal::from_text(CKLIGHTNING_LEDGER_ID)
-        .map_err(|e| AgentError::MessageError(format!("Invalid canister ID: {}", e)))?;
-    println!("ckLightning Ledger Canister ID: {:?}", can_ckl_id);
-
-    let str_user = str_home_from_path(get_pem_path());
-    let usr_user_id = create_identity(Some(&str_user));
-    let usr_user_pr = usr_user_id.sender()
-        .map_err(|e| AgentError::MessageError(format!("Failed to get principal from identity: {}", e)))?;
-    println!("User Principal: {:?}", usr_user_pr);
-
-    let zero_subaccount = Subaccount([0; 32]);
-    let usr_acc_id = AccountIdentifier::new(&usr_user_pr, &zero_subaccount);
-    println!("User Account ID: {:?}", usr_acc_id);
-
-    // Query user's ckBTC balance
-    let resp_user_balance = agent
-        .icrc1_balance_of(usr_user_pr)
-        .await
-        .map_err(|e| AgentError::MessageError(format!("Failed to get user balance: {}", e)))?;
-
-    Ok(format!("✅ User Balance: {}", resp_user_balance))
-}
-
-async fn get_ln_address_cli() -> Result<String, Box<dyn std::error::Error>> {
-    info!("🧪 Requesting LN Address");
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let client = ck_lightning_client::CkLightningClient::new(agent);
-    let ln_address = client.get_ln_address().await?;
-
-    info!("✅ Got LN address");
-    Ok(ln_address)
-}
-
-// ✅ NEW: Get Lightning Invoice function
-async fn get_ln_invoice(
-    amount_msat: u64,
-    btc_address: String,
-) -> Result<SignedCandidInvoice, Box<dyn std::error::Error>> {
-    info!(
-        "🧪 Requesting LN Invoice: {} msat → {}",
-        amount_msat, btc_address
-    );
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    // Create CkLightningClient
-    let client = ck_lightning_client::CkLightningClient::new(agent);
-
-    let signed_invoice = client.query_ln_invoice(amount_msat, btc_address).await?;
-
-    info!("✅ Got signed invoice: {} msat", amount_msat);
-    Ok(signed_invoice)
-}
-
-// =============================================================================
-// Liquidity Pool Helper Functions
-// =============================================================================
-
-use cklightning::ic_types::{
-    LpBalanceResponse, LpDepositResponse, LpWithdrawResponse, TotalLpBalanceResponse,
-    LpBtcAddressResponse, LpBtcDepositResponse, LpBtcWithdrawResponse,
-    // User BTC operations
-    DepositorBtcBalanceResponse, SendFromDepositorResponse,
-    // Offramp types (ckBTC → Lightning)
-    OfframpResponse, GetOfframpStatusResponse,
-    // Onramp types (Lightning → ckBTC)
-    OnrampInvoiceResponse, GetInvoiceResponse,
-    // Relay registration types
-    RegisterRelayResponse, GetRelayInfoResponse,
-    // Rate limiting types
-    RateLimitStatus,
-};
-use candid::Nat;
-
-/// Approve the ckLightning canister to spend caller's ckBTC (ICRC-2)
-async fn lp_approve(amount: u64) -> Result<Nat, Box<dyn std::error::Error>> {
-    info!("Approving {} satoshis for LP canister", amount);
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let can_ckl_id = Principal::from_text(CKLIGHTNING_LEDGER_ID)?;
-    let block_idx = agent.tx_icrc2_approve(can_ckl_id, amount).await?;
-
-    info!("Approval successful, block index: {}", block_idx);
-    Ok(block_idx)
-}
-
-/// Deposit ckBTC to the liquidity pool
-async fn lp_deposit(amount: u64) -> Result<LpDepositResponse, Box<dyn std::error::Error>> {
-    info!("Depositing {} satoshis to LP", amount);
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.deposit_ckbtc(amount).await?;
-
-    info!("Deposit complete: success={}", resp.success);
-    Ok(resp)
-}
-
-/// Withdraw ckBTC from the liquidity pool
-async fn lp_withdraw(amount: u64) -> Result<LpWithdrawResponse, Box<dyn std::error::Error>> {
-    info!("Withdrawing {} satoshis from LP", amount);
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.withdraw_ckbtc(amount).await?;
-
-    info!("Withdraw complete: success={}", resp.success);
-    Ok(resp)
-}
-
-/// Get caller's LP balance
-async fn lp_balance() -> Result<LpBalanceResponse, Box<dyn std::error::Error>> {
-    info!("Fetching LP balance");
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.get_my_lp_balance().await?;
-
-    info!("LP balance fetched");
-    Ok(resp)
-}
-
-/// Get total LP balance
-async fn lp_total() -> Result<TotalLpBalanceResponse, Box<dyn std::error::Error>> {
-    info!("Fetching total LP balance");
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.get_total_lp_balance().await?;
-
-    info!("Total LP balance fetched");
-    Ok(resp)
-}
-
-/// Get user's on-chain ckBTC balance
-async fn get_user_ckbtc_balance() -> Result<Nat, Box<dyn std::error::Error>> {
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let str_user = str_home_from_path(get_pem_path());
-    let usr_user_id = create_identity(Some(&str_user));
-    let usr_user_pr = usr_user_id.sender()?;
-
-    let balance = agent.icrc1_balance_of(usr_user_pr).await?;
-    Ok(balance)
-}
-
-// =============================================================================
-// BTC Liquidity Pool Helper Functions
-// =============================================================================
-
-/// Get the shared LP BTC address for deposits
-async fn lp_btc_address() -> Result<LpBtcAddressResponse, Box<dyn std::error::Error>> {
-    info!("Fetching LP BTC address");
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.get_lp_btc_address().await?;
-
-    info!("LP BTC address fetched");
-    Ok(resp)
-}
-
-/// Claim a BTC deposit to the liquidity pool
-///
-/// After sending BTC to the shared LP address and waiting for 6 confirmations,
-/// call this to credit the deposit to your LP balance.
-async fn lp_btc_deposit(txid: Option<Vec<u8>>) -> Result<LpBtcDepositResponse, Box<dyn std::error::Error>> {
-    info!("Claiming BTC deposit");
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.deposit_btc(txid, 0).await?;
-
-    info!("BTC deposit claim complete: success={}", resp.success);
-    Ok(resp)
-}
-
-/// Withdraw BTC from the liquidity pool
-async fn lp_btc_withdraw(
-    amount: u64,
-    destination: String,
-) -> Result<LpBtcWithdrawResponse, Box<dyn std::error::Error>> {
-    info!("Withdrawing {} satoshis BTC to {}", amount, destination);
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.withdraw_btc(amount, destination).await?;
-
-    info!("BTC withdraw complete: success={}", resp.success);
-    Ok(resp)
-}
-
-// =============================================================================
-// User BTC Operations Helper Functions (from depositor address)
-// =============================================================================
-
-/// Get the caller's BTC address (derived from principal via threshold ECDSA)
-async fn get_depositor_btc_address() -> Result<DepositorBtcBalanceResponse, Box<dyn std::error::Error>> {
-    info!("Fetching depositor BTC address");
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.get_depositor_btc_balance().await?;
-
-    info!("Depositor BTC address fetched");
-    Ok(resp)
-}
-
-/// Get the caller's BTC balance at their depositor address
-async fn get_depositor_btc_balance() -> Result<DepositorBtcBalanceResponse, Box<dyn std::error::Error>> {
-    info!("Fetching depositor BTC balance");
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.get_depositor_btc_balance().await?;
-
-    info!("Depositor BTC balance fetched: {} sats", resp.balance_sat);
-    Ok(resp)
-}
-
-/// Send BTC from the caller's depositor address to a destination
-async fn send_btc_from_depositor(
-    amount: u64,
-    destination: String,
-) -> Result<SendFromDepositorResponse, Box<dyn std::error::Error>> {
-    info!("Sending {} satoshis BTC to {}", amount, destination);
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.send_btc_from_depositor_address(amount, destination).await?;
-
-    info!("BTC send complete: success={}", resp.success);
-    Ok(resp)
-}
-
-// =============================================================================
-// Offramp Helper Functions (ckBTC → Lightning)
-// =============================================================================
-
-/// Request an offramp (ckBTC → Lightning)
-///
-/// User must first call lp-approve to allow the canister to take custody of ckBTC.
-/// The canister takes custody of the ckBTC and the relay pays the user's invoice.
-async fn request_offramp(
-    invoice: String,
-    fallback_btc_address: Option<String>,
-) -> Result<OfframpResponse, Box<dyn std::error::Error>> {
-    info!("Requesting offramp with invoice: {}...", &invoice[..invoice.len().min(40)]);
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.request_offramp(invoice, fallback_btc_address).await?;
-
-    info!("Offramp request complete: success={}", resp.success);
-    Ok(resp)
-}
-
-/// Get the status of an offramp request
-async fn get_offramp_status(
-    request_id: String,
-) -> Result<GetOfframpStatusResponse, Box<dyn std::error::Error>> {
-    info!("Fetching offramp status for: {}", request_id);
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.get_offramp_status(request_id).await?;
-
-    info!("Offramp status fetched");
-    Ok(resp)
-}
-
-// =============================================================================
-// ICP Operations Helper Functions (for anti-DDoS fee)
-// =============================================================================
-
-
-/// Get user's ICP balance
-async fn get_user_icp_balance() -> Result<Nat, Box<dyn std::error::Error>> {
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let str_user = str_home_from_path(get_pem_path());
-    let usr_user_id = create_identity(Some(&str_user));
-    let usr_user_pr = usr_user_id.sender()?;
-
-    let balance = agent.icp_balance_of(usr_user_pr).await?;
-    Ok(balance)
-}
-
-/// Approve the ckLightning canister to spend caller's ICP (ICRC-2)
-async fn icp_approve(amount_e8s: u64) -> Result<Nat, Box<dyn std::error::Error>> {
-    info!("Approving {} e8s ICP for canister", amount_e8s);
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let can_ckl_id = Principal::from_text(CKLIGHTNING_LEDGER_ID)?;
-    let block_idx = agent.tx_icp_icrc2_approve(can_ckl_id, amount_e8s).await?;
-
-    info!("ICP approval successful, block index: {}", block_idx);
-    Ok(block_idx)
-}
-
-// =============================================================================
-// Onramp Helper Functions (Lightning → ckBTC)
-// =============================================================================
-
-/// Request an onramp invoice (Lightning → ckBTC)
-///
-/// User must first call icp-approve to allow the canister to collect the 20 ICP anti-DDoS fee.
-/// The fee is refunded on successful completion.
-async fn request_onramp_invoice(
-    amount_sats: u64,
-) -> Result<OnrampInvoiceResponse, Box<dyn std::error::Error>> {
-    info!("Requesting onramp invoice for {} sats", amount_sats);
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    // Get the user's principal (recipient of ckBTC)
-    let str_user = str_home_from_path(get_pem_path());
-    let usr_user_id = create_identity(Some(&str_user));
-    let recipient = usr_user_id.sender()?;
-
-    let resp = agent.request_onramp_invoice(recipient, amount_sats).await?;
-
-    info!("Onramp invoice request complete: success={}", resp.success);
-    Ok(resp)
-}
-
-/// Get the status/invoice for an onramp request
-async fn get_invoice(
-    request_id: String,
-) -> Result<GetInvoiceResponse, Box<dyn std::error::Error>> {
-    info!("Fetching invoice for request: {}", request_id);
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.get_invoice(request_id).await?;
-
-    info!("Invoice status fetched");
-    Ok(resp)
-}
-
-// =============================================================================
-// Test/Debug Helper Functions
-// =============================================================================
-
-/// Set test timeouts for swap expiry (for E2E testing)
-/// Pass 0,0 to reset to defaults
-async fn set_test_timeouts(
-    onramp_ns: u64,
-    offramp_ns: u64,
-) -> Result<(), Box<dyn std::error::Error>> {
-    info!("Setting test timeouts: onramp={}ns, offramp={}ns", onramp_ns, offramp_ns);
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    agent.set_test_timeouts(onramp_ns, offramp_ns).await?;
-
-    info!("Test timeouts set");
-    Ok(())
-}
-
-/// Manually trigger expired swap check
-async fn check_expired_swaps() -> Result<(), Box<dyn std::error::Error>> {
-    info!("Triggering expired swap check");
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    agent.check_expired_swaps().await?;
-
-    info!("Expired swap check complete");
-    Ok(())
-}
-
-/// Get expired swap counts
-async fn get_expired_swap_counts() -> Result<(u64, u64), Box<dyn std::error::Error>> {
-    info!("Fetching expired swap counts");
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let (onramp, offramp) = agent.get_expired_swap_counts().await?;
-
-    info!("Expired counts: onramp={}, offramp={}", onramp, offramp);
-    Ok((onramp, offramp))
-}
-
-// =============================================================================
-// Relay Registration Helper Functions
-// =============================================================================
-
-/// Register a relay with its Lightning node pubkey
-///
-/// The relay must call this before submitting invoices for onramp requests.
-/// This enables invoice verification to prevent invoice substitution attacks.
-async fn register_relay(node_pubkey: Vec<u8>) -> Result<RegisterRelayResponse, Box<dyn std::error::Error>> {
-    info!("Registering relay with node pubkey: {}", hex::encode(&node_pubkey));
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.register_relay(node_pubkey).await?;
-
-    info!("Relay registration complete: success={}", resp.success);
-    Ok(resp)
-}
-
-/// Get information about the registered relay
-async fn get_relay_info() -> Result<GetRelayInfoResponse, Box<dyn std::error::Error>> {
-    info!("Fetching relay info");
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.get_relay_info().await?;
-
-    info!("Relay info fetched: registered={}", resp.registered);
-    Ok(resp)
-}
-
-/// Get the caller's rate limit status
-async fn get_rate_limit_status() -> Result<RateLimitStatus, Box<dyn std::error::Error>> {
-    info!("Fetching rate limit status");
-
-    let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
-    agent.fetch_root_key().await?;
-
-    let resp = agent.get_rate_limit_status().await?;
-
-    info!("Rate limit status fetched");
-    Ok(resp)
 }
