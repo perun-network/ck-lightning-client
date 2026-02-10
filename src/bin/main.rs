@@ -32,7 +32,7 @@ fn get_pem_path() -> &'static str {
 #[derive(Parser)]
 #[command(name = "ckl-cli", about = "ckLightning CLI client")]
 struct Cli {
-    /// Identity to use: "user" or "node"
+    /// Identity to use: "user", "node", "default", or any dfx identity name
     #[arg(short, long, default_value = "user")]
     identity: String,
 }
@@ -85,13 +85,15 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Set identity based on CLI argument
+    // Supports "user", "node", "default", or any dfx identity name
     let pem_path = match cli.identity.as_str() {
-        "node" => PEM_NODE_ACC_PATH,
-        "user" | _ => PEM_USER_ACC_PATH,
+        "node" => PEM_NODE_ACC_PATH.to_string(),
+        "user" => PEM_USER_ACC_PATH.to_string(),
+        name => format!(".config/dfx/identity/{}/identity.pem", name),
     };
-    IDENTITY_PEM_PATH.set(pem_path.to_string()).ok();
+    IDENTITY_PEM_PATH.set(pem_path.clone()).ok();
 
-    info!("CKL CLI Started - Identity: {} ({})", cli.identity, pem_path);
+    info!("CKL CLI Started - Identity: {} ({})", cli.identity, &pem_path);
 
     let mut handler = MockHandler;
     let mut endpoints = MockEndpoints;
@@ -713,6 +715,154 @@ async fn main() -> Result<()> {
                 }
             }
 
+            // =============================================================
+            // Admin / Identity Commands
+            // =============================================================
+
+            "whoami" => {
+                match commands::admin::whoami().await {
+                    Ok(principal) => {
+                        println!("{}", principal);
+                    }
+                    Err(e) => {
+                        error!("whoami failed: {}", e);
+                    }
+                }
+            }
+
+            "set-admin" if parts.len() >= 2 => {
+                let principal_text = parts[1];
+                match commands::admin::set_admin(principal_text.to_string()).await {
+                    Ok(_) => {
+                        println!("Admin set to: {}", principal_text);
+                    }
+                    Err(e) => {
+                        error!("set-admin failed: {}", e);
+                    }
+                }
+            }
+
+            "withdraw-fees" if parts.len() >= 2 => {
+                let recipient_text = parts[1];
+                match commands::admin::withdraw_protocol_fees(recipient_text.to_string()).await {
+                    Ok(resp) => {
+                        if resp.success {
+                            println!("Protocol fees withdrawn!");
+                            println!("  BTC:   {} satoshis", resp.btc_amount);
+                            println!("  ckBTC: {} satoshis", resp.ckbtc_amount);
+                            if let Some(block_idx) = resp.ckbtc_block_index {
+                                println!("  Block index: {}", block_idx);
+                            }
+                        } else {
+                            println!("Withdraw failed: {:?}", resp.error);
+                        }
+                    }
+                    Err(e) => {
+                        error!("withdraw-fees failed: {}", e);
+                    }
+                }
+            }
+
+            "update-config" => {
+                // Parse optional named args: --amp N --fee N --protocol-fee N --slippage N --imbalance-fee N
+                let mut amplification: Option<u64> = None;
+                let mut fee_bps: Option<u64> = None;
+                let mut protocol_fee_share_bps: Option<u64> = None;
+                let mut max_slippage_bps: Option<u64> = None;
+                let mut imbalance_fee_bps: Option<u64> = None;
+
+                let mut i = 1;
+                while i < parts.len() {
+                    match parts[i] {
+                        "--amp" if i + 1 < parts.len() => {
+                            amplification = parts[i + 1].parse().ok();
+                            i += 2;
+                        }
+                        "--fee" if i + 1 < parts.len() => {
+                            fee_bps = parts[i + 1].parse().ok();
+                            i += 2;
+                        }
+                        "--protocol-fee" if i + 1 < parts.len() => {
+                            protocol_fee_share_bps = parts[i + 1].parse().ok();
+                            i += 2;
+                        }
+                        "--slippage" if i + 1 < parts.len() => {
+                            max_slippage_bps = parts[i + 1].parse().ok();
+                            i += 2;
+                        }
+                        "--imbalance-fee" if i + 1 < parts.len() => {
+                            imbalance_fee_bps = parts[i + 1].parse().ok();
+                            i += 2;
+                        }
+                        _ => {
+                            println!("Unknown arg: {}. Usage: update-config [--amp N] [--fee N] [--protocol-fee N] [--slippage N] [--imbalance-fee N]", parts[i]);
+                            i = parts.len(); // break
+                        }
+                    }
+                }
+
+                match commands::admin::update_stableswap_config(
+                    amplification,
+                    fee_bps,
+                    protocol_fee_share_bps,
+                    max_slippage_bps,
+                    imbalance_fee_bps,
+                ).await {
+                    Ok(resp) => {
+                        if resp.success {
+                            println!("StableSwap config updated!");
+                            println!("  Amplification:      {}", resp.config.amplification);
+                            println!("  Fee (bps):          {}", resp.config.fee_bps);
+                            println!("  Protocol fee (bps): {}", resp.config.protocol_fee_share_bps);
+                            println!("  Max slippage (bps): {}", resp.config.max_slippage_bps);
+                            println!("  Imbalance fee (bps):{}", resp.config.imbalance_fee_bps);
+                        } else {
+                            println!("Config update failed: {:?}", resp.error);
+                        }
+                    }
+                    Err(e) => {
+                        error!("update-config failed: {}", e);
+                    }
+                }
+            }
+
+            "pending-onramps" => {
+                match commands::admin::get_pending_invoice_requests().await {
+                    Ok(requests) => {
+                        if requests.is_empty() {
+                            println!("No pending onramp requests");
+                        } else {
+                            println!("Pending onramp requests ({}):", requests.len());
+                            for req in &requests {
+                                println!("  ID: {} | {} sats | recipient: {}", req.request_id, req.amount_sats, req.recipient);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("pending-onramps failed: {}", e);
+                    }
+                }
+            }
+
+            "pending-offramps" => {
+                match commands::admin::get_pending_offramp_requests().await {
+                    Ok(requests) => {
+                        if requests.is_empty() {
+                            println!("No pending offramp requests");
+                        } else {
+                            println!("Pending offramp requests ({}):", requests.len());
+                            for req in &requests {
+                                let amount_sats = req.amount_msat / 1000;
+                                println!("  ID: {} | {} sats | hash: 0x{}", req.request_id, amount_sats, hex::encode(&req.payment_hash));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("pending-offramps failed: {}", e);
+                    }
+                }
+            }
+
             "help" | "h" => {
                 println!("=== ckLightning Client Commands ===");
                 println!("");
@@ -762,6 +912,15 @@ async fn main() -> Result<()> {
                 println!("Rate Limiting:");
                 println!("  rate-limit           | Show your rate limit status");
                 println!("  (Max 10 onramp + 10 offramp requests per hour)");
+                println!("");
+                println!("Admin:");
+                println!("  whoami               | Show current identity's principal");
+                println!("  set-admin <principal> | Set admin (controller-only)");
+                println!("  withdraw-fees <principal> | Withdraw protocol fees (admin-only)");
+                println!("  update-config [--amp N] [--fee N] [--protocol-fee N] [--slippage N] [--imbalance-fee N]");
+                println!("                       | Update StableSwap config (admin-only)");
+                println!("  pending-onramps      | List pending onramp invoice requests");
+                println!("  pending-offramps     | List pending offramp requests");
                 println!("");
                 println!("Other:");
                 println!("  fetch-key            | Check ckBTC balance");
