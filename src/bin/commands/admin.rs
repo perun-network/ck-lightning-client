@@ -211,6 +211,8 @@ pub(crate) async fn update_stableswap_config(
 	protocol_fee_share_bps: Option<u64>,
 	max_slippage_bps: Option<u64>,
 	imbalance_fee_bps: Option<u64>,
+	rebate_bps: Option<u64>,
+	max_swap_pct_bps: Option<u64>,
 ) -> Result<UpdateStableSwapConfigResponse, Box<dyn std::error::Error>> {
 	let request = UpdateStableSwapConfigRequest {
 		amplification,
@@ -218,6 +220,8 @@ pub(crate) async fn update_stableswap_config(
 		protocol_fee_share_bps,
 		max_slippage_bps,
 		imbalance_fee_bps,
+		rebate_bps,
+		max_swap_pct_bps,
 	};
 
 	info!("Updating StableSwap config: {:?}", request);

@@ -764,12 +764,14 @@ async fn main() -> Result<()> {
             }
 
             "update-config" => {
-                // Parse optional named args: --amp N --fee N --protocol-fee N --slippage N --imbalance-fee N
+                // Parse optional named args: --amp N --fee N --protocol-fee N --slippage N --imbalance-fee N --rebate N --max-swap-pct N
                 let mut amplification: Option<u64> = None;
                 let mut fee_bps: Option<u64> = None;
                 let mut protocol_fee_share_bps: Option<u64> = None;
                 let mut max_slippage_bps: Option<u64> = None;
                 let mut imbalance_fee_bps: Option<u64> = None;
+                let mut rebate_bps: Option<u64> = None;
+                let mut max_swap_pct_bps: Option<u64> = None;
 
                 let mut i = 1;
                 while i < parts.len() {
@@ -794,8 +796,16 @@ async fn main() -> Result<()> {
                             imbalance_fee_bps = parts[i + 1].parse().ok();
                             i += 2;
                         }
+                        "--rebate" if i + 1 < parts.len() => {
+                            rebate_bps = parts[i + 1].parse().ok();
+                            i += 2;
+                        }
+                        "--max-swap-pct" if i + 1 < parts.len() => {
+                            max_swap_pct_bps = parts[i + 1].parse().ok();
+                            i += 2;
+                        }
                         _ => {
-                            println!("Unknown arg: {}. Usage: update-config [--amp N] [--fee N] [--protocol-fee N] [--slippage N] [--imbalance-fee N]", parts[i]);
+                            println!("Unknown arg: {}. Usage: update-config [--amp N] [--fee N] [--protocol-fee N] [--slippage N] [--imbalance-fee N] [--rebate N] [--max-swap-pct N]", parts[i]);
                             i = parts.len(); // break
                         }
                     }
@@ -807,6 +817,8 @@ async fn main() -> Result<()> {
                     protocol_fee_share_bps,
                     max_slippage_bps,
                     imbalance_fee_bps,
+                    rebate_bps,
+                    max_swap_pct_bps,
                 ).await {
                     Ok(resp) => {
                         if resp.success {
@@ -816,6 +828,8 @@ async fn main() -> Result<()> {
                             println!("  Protocol fee (bps): {}", resp.config.protocol_fee_share_bps);
                             println!("  Max slippage (bps): {}", resp.config.max_slippage_bps);
                             println!("  Imbalance fee (bps):{}", resp.config.imbalance_fee_bps);
+                            println!("  Rebate (bps):       {}", resp.config.rebate_bps);
+                            println!("  Max swap pct (bps): {}", resp.config.max_swap_pct_bps);
                         } else {
                             println!("Config update failed: {:?}", resp.error);
                         }
@@ -881,12 +895,12 @@ async fn main() -> Result<()> {
                 println!("  lp-approve <amount>  | Approve canister to spend ckBTC");
                 println!("");
                 println!("Onramp (Lightning -> ckBTC):");
-                println!("  REQUIRES: icp-approve 21");
+                println!("  REQUIRES: icp-approve 2");
                 println!("  request-onramp <sats> | Request invoice to receive ckBTC");
                 println!("  get-invoice <id>      | Get invoice for request (poll until ready)");
                 println!("");
                 println!("Offramp (ckBTC -> Lightning):");
-                println!("  REQUIRES: icp-approve 21 && lp-approve <ckBTC amount>");
+                println!("  REQUIRES: icp-approve 2 && lp-approve <ckBTC amount>");
                 println!("  offramp <invoice> [fallback_addr] | Exchange ckBTC for Lightning BTC");
                 println!("  offramp-status <id>  | Check offramp request status");
                 println!("");
@@ -917,7 +931,7 @@ async fn main() -> Result<()> {
                 println!("  whoami               | Show current identity's principal");
                 println!("  set-admin <principal> | Set admin (controller-only)");
                 println!("  withdraw-fees <principal> | Withdraw protocol fees (admin-only)");
-                println!("  update-config [--amp N] [--fee N] [--protocol-fee N] [--slippage N] [--imbalance-fee N]");
+                println!("  update-config [--amp N] [--fee N] [--protocol-fee N] [--slippage N] [--imbalance-fee N] [--rebate N] [--max-swap-pct N]");
                 println!("                       | Update StableSwap config (admin-only)");
                 println!("  pending-onramps      | List pending onramp invoice requests");
                 println!("  pending-offramps     | List pending offramp requests");
