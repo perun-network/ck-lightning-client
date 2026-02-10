@@ -25,5 +25,5 @@ pub const BTC_MINTER_ID: &str = "uzt4z-lp777-77774-qaabq-cai";
 pub const DEVNET_BASIC_BITCOIN: &str = "vpyes-67777-77774-qaaeq-cai";
 
 pub const BTC_LEDGER_DEFAULT_FEE: u64 = 1000;
-pub const ICP_DDOS_FEE_E8S: u64 = 2_000_000_000; // 20 ICP in e8s
+pub const ICP_DDOS_FEE_E8S: u64 = 100_000_000; // 1 ICP in e8s
 pub const ICP_TRANSFER_FEE_E8S: u64 = 10_000;     // 0.0001 ICP in e8s
