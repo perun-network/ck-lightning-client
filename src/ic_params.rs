@@ -14,15 +14,16 @@
 
 pub use ldk_sample::ICAgent;
 
-pub const PEM_MINTING_ACC_PATH: &str = ".config/dfx/identity/minting_ledger/identity.pem";
-pub const PEM_NODE_ACC_PATH: &str = ".config/dfx/identity/node/identity.pem";
-pub const PEM_USER_ACC_PATH: &str = ".config/dfx/identity/user/identity.pem";
-pub const LEDGER_ID: &str = "by6od-j4aaa-aaaaa-qaadq-cai";
-pub const BTC_LEDGER_ID: &str = "u6s2n-gx777-77774-qaaba-cai";
-pub const ICP_LEDGER_ID: &str = "ufxgi-4p777-77774-qaadq-cai";
-pub const CKLIGHTNING_LEDGER_ID: &str = "vizcg-th777-77774-qaaea-cai";
-pub const BTC_MINTER_ID: &str = "uzt4z-lp777-77774-qaabq-cai";
-pub const DEVNET_BASIC_BITCOIN: &str = "vpyes-67777-77774-qaaeq-cai";
+// Staging: IC mainnet + ckTESTBTC (testnet4)
+pub const PEM_MINTING_ACC_PATH: &str = ".config/dfx/identity/staging-node/identity.pem";
+pub const PEM_NODE_ACC_PATH: &str = ".config/dfx/identity/staging-node/identity.pem";
+pub const PEM_USER_ACC_PATH: &str = ".config/dfx/identity/staging-user/identity.pem";
+pub const LEDGER_ID: &str = "mc6ru-gyaaa-aaaar-qaaaq-cai";
+pub const BTC_LEDGER_ID: &str = "mc6ru-gyaaa-aaaar-qaaaq-cai";
+pub const ICP_LEDGER_ID: &str = "ryjl3-tyaaa-aaaaa-aaaba-cai";
+pub const CKLIGHTNING_LEDGER_ID: &str = "5iwit-tiaaa-aaaau-aelaa-cai";
+pub const BTC_MINTER_ID: &str = "ml52i-qqaaa-aaaar-qaaba-cai";
+pub const DEVNET_BASIC_BITCOIN: &str = "g4xu7-jiaaa-aaaan-aaaaq-cai";
 
 pub const BTC_LEDGER_DEFAULT_FEE: u64 = 1000;
 pub const ICP_DDOS_FEE_E8S: u64 = 100_000_000; // 1 ICP in e8s
