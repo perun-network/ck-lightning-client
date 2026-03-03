@@ -87,7 +87,7 @@ pub(crate) async fn register_relay(node_pubkey: Vec<u8>) -> Result<RegisterRelay
 	let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
 	agent.fetch_root_key().await?;
 
-	let resp = agent.register_relay(node_pubkey).await?;
+	let resp = agent.register_relay(node_pubkey, None, None).await?;
 
 	info!("Relay registration complete: success={}", resp.success);
 	Ok(resp)
