@@ -390,14 +390,23 @@ async fn main() -> Result<()> {
             }
 
             "icp-approve" if parts.len() >= 2 => {
-                let amount_icp: u64 = parts[1]
-                    .parse()
-                    .map_err(|_| anyhow::anyhow!("Invalid amount (whole ICP, e.g. 2)"))?;
-                let amount_e8s = amount_icp * 100_000_000;
+                let amount_str = parts[1];
+                // Parse as e8s: support both whole (2) and decimal (0.5) ICP
+                let amount_e8s: u64 = if let Some(dot_pos) = amount_str.find('.') {
+                    let whole: u64 = amount_str[..dot_pos].parse().unwrap_or(0);
+                    let frac_str = &amount_str[dot_pos + 1..];
+                    let frac_padded = format!("{:0<8}", frac_str);
+                    let frac: u64 = frac_padded[..8].parse().unwrap_or(0);
+                    whole * 100_000_000 + frac
+                } else {
+                    let whole: u64 = amount_str.parse()
+                        .map_err(|_| anyhow::anyhow!("Invalid amount (e.g. 2 or 0.5)"))?;
+                    whole * 100_000_000
+                };
 
                 match commands::swap::icp_approve(amount_e8s).await {
                     Ok(block_idx) => {
-                        println!("Approved {} ICP ({} e8s) for canister", amount_icp, amount_e8s);
+                        println!("Approved {} ICP ({} e8s) for canister", amount_str, amount_e8s);
                         println!("Block index: {}", block_idx);
                         println!("");
                         println!("You can now use onramp/offramp commands.");
