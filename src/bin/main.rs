@@ -18,7 +18,7 @@ use anyhow::Result;
 use candid::Nat;
 use ck_lightning_client::{PEM_USER_ACC_PATH, PEM_NODE_ACC_PATH};
 use clap::Parser;
-use log::{error, info, warn};
+use log::{error, info};
 use std::io::Write;
 use std::sync::OnceLock;
 
@@ -37,47 +37,6 @@ struct Cli {
     identity: String,
 }
 
-struct MockEndpoints;
-struct MockHandler;
-
-impl MockHandler {
-    fn handle_rpc(
-        &mut self,
-        endpoints: &mut MockEndpoints,
-        client_id: u64,
-        request: &str,
-    ) -> Result<()> {
-        info!("Mock RPC: client={}, request={:?}", client_id, request);
-        // Your real handle_rpc logic here
-        error!("RPC request {:?} is not supported", request);
-        Err(anyhow::anyhow!("wrong_esb_msg"))
-    }
-
-    fn handle_p2p(
-        &mut self,
-        endpoints: &mut MockEndpoints,
-        remote_id: &str,
-        message: &str,
-    ) -> Result<()> {
-        info!("Mock P2P: remote={}, msg={:?}", remote_id, message);
-
-        // Your real handle_p2p logic here
-        match message {
-            "OpenChannel" => {
-                warn!("Got `open_channel` from {}, unexpected", remote_id);
-            }
-            "FundingLocked" | "ChannelReestablish" | "AcceptChannel" | "FundingCreated"
-            | "FundingSigned" => {
-                error!("Unsupported P2P request {:?} from {}", message, remote_id);
-                return Err(anyhow::anyhow!("wrong_esb_msg"));
-            }
-            _ => {
-                info!("Ignoring P2P message: {}", message);
-            }
-        }
-        Ok(())
-    }
-}
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
@@ -95,9 +54,6 @@ async fn main() -> Result<()> {
 
     info!("CKL CLI Started - Identity: {} ({})", cli.identity, &pem_path);
 
-    let mut handler = MockHandler;
-    let mut endpoints = MockEndpoints;
-
     loop {
         print!("ckl> ");
         std::io::stdout().flush()?;
@@ -114,24 +70,6 @@ async fn main() -> Result<()> {
 
         let parts: Vec<&str> = input.split_whitespace().collect();
         match parts[0] {
-            "rpc" if parts.len() > 1 => {
-                let client_id = 42;
-                match handler.handle_rpc(&mut endpoints, client_id, parts[1]) {
-                    Ok(_) => info!("RPC OK"),
-                    Err(e) => error!("RPC: {}", e),
-                }
-            }
-            "p2p" if parts.len() > 1 => {
-                let msg = parts[1];
-                let remote_id = parts.get(2).unwrap_or(&"test-node-123");
-                match handler.handle_p2p(&mut endpoints, remote_id, msg) {
-                    Ok(_) => info!("P2P OK"),
-                    Err(e) => error!("P2P: {}", e),
-                }
-            }
-            "status" => {
-                info!("Endpoints: OK | Handler: Ready");
-            }
             "fetch-key" => {
                 match commands::admin::check_ckbtc_balance().await {
                     Ok(info) => {
@@ -441,8 +379,9 @@ async fn main() -> Result<()> {
                     Ok(balance) => {
                         // Balance is in e8s (1 ICP = 100_000_000 e8s)
                         let balance_e8s: u64 = balance.0.to_string().parse().unwrap_or(0);
-                        let icp_amount = balance_e8s as f64 / 100_000_000.0;
-                        println!("Your ICP Balance: {:.8} ICP ({} e8s)", icp_amount, balance);
+                        let whole = balance_e8s / 100_000_000;
+                        let frac = balance_e8s % 100_000_000;
+                        println!("Your ICP Balance: {}.{:08} ICP ({} e8s)", whole, frac, balance);
                     }
                     Err(e) => {
                         error!("icp-balance failed: {}", e);
@@ -451,10 +390,10 @@ async fn main() -> Result<()> {
             }
 
             "icp-approve" if parts.len() >= 2 => {
-                let amount_icp: f64 = parts[1]
+                let amount_icp: u64 = parts[1]
                     .parse()
-                    .map_err(|_| anyhow::anyhow!("Invalid amount"))?;
-                let amount_e8s = (amount_icp * 100_000_000.0) as u64;
+                    .map_err(|_| anyhow::anyhow!("Invalid amount (whole ICP, e.g. 2)"))?;
+                let amount_e8s = amount_icp * 100_000_000;
 
                 match commands::swap::icp_approve(amount_e8s).await {
                     Ok(block_idx) => {

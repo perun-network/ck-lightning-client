@@ -6,7 +6,7 @@ use cklightning::ic_types::{
 };
 use ic_agent::Identity;
 use ic_agent::export::Principal;
-use ldk_sample::{ICAgent, create_identity, str_home_from_path};
+use ic_lightning_relay::{ICAgent, create_identity, str_home_from_path};
 use log::info;
 
 use super::super::get_pem_path;

@@ -12,7 +12,7 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 
-pub use ldk_sample::ICAgent;
+pub use ic_lightning_relay::ICAgent;
 
 pub const PEM_MINTING_ACC_PATH: &str = ".config/dfx/identity/minting_ledger/identity.pem";
 pub const PEM_NODE_ACC_PATH: &str = ".config/dfx/identity/node/identity.pem";

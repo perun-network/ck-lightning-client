@@ -11,7 +11,7 @@ use cklightning::ic_types::{
 use ic_agent::{Identity, AgentError};
 use ic_agent::export::Principal;
 use ic_ledger_types::{AccountIdentifier, Subaccount};
-use ldk_sample::{ICAgent, create_identity, str_home_from_path};
+use ic_lightning_relay::{ICAgent, create_identity, str_home_from_path};
 use log::info;
 
 use super::super::get_pem_path;

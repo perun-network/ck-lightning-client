@@ -1,7 +1,7 @@
 use cklightning::ic_types::{
 	DepositorBtcBalanceResponse, SendFromDepositorResponse,
 };
-use ldk_sample::{ICAgent, str_home_from_path};
+use ic_lightning_relay::{ICAgent, str_home_from_path};
 use log::info;
 
 use super::super::get_pem_path;
