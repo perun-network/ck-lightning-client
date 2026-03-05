@@ -14,7 +14,7 @@
 use anyhow::Result;
 use candid::{Nat, Principal};
 use cklightning::ic_types::SignedCandidInvoice;
-use ldk_sample::ICAgent;
+use ic_lightning_relay::ICAgent;
 
 pub struct CkLightningClient {
     pub agent: ICAgent,

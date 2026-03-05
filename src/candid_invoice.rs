@@ -15,10 +15,9 @@
 use bitcoin::hashes::Hash;
 use candid::Nat;
 use cklightning::ic_types::SignedCandidInvoice;
-use lightning_invoice::{Bolt11Invoice, PaymentSecret};
+use lightning_invoice::Bolt11Invoice;
 use std::convert::TryInto;
 use std::str::FromStr;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Errors that can occur during Candid invoice conversions
 #[derive(Debug)]
