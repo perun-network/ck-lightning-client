@@ -33,20 +33,41 @@ cargo build --release --bin main
 - `lp-btc-deposit [txid]` — Claim BTC deposit
 - `lp-btc-withdraw <amount> <address>` — Withdraw BTC from LP
 
+**User BTC (threshold ECDSA):**
+- `btc-address` — Get your BTC address (derived from principal)
+- `btc-balance` — Check BTC balance at your depositor address
+- `btc-send <amount> <destination>` — Send BTC from your personal address
+
+**Lightning:**
+- `ln-address` — Get Lightning address
+- `ln-invoice <amount_msat> <btc_address>` — Create Lightning invoice
+
 **Balances:**
-- `icp-balance` / `ckbtc-balance` / `btc-balance` — Check balances
+- `icp-balance` / `ckbtc-balance` — Check ICP/ckBTC balances
 - `icp-approve <amount>` — Approve ICP for anti-DDoS fee
+- `fetch-key` — Check ckBTC balance (alias)
 
 **Admin (requires admin/controller identity):**
 - `set-admin <principal>` — Set admin principal
-- `update-config [--amp N] [--fee N] ...` — Update StableSwap parameters
+- `update-config [--amp N] [--fee N] [--protocol-fee N] [--slippage N] [--imbalance-fee N] [--rebate N] [--max-swap-pct N]` — Update StableSwap parameters
 - `withdraw-fees <principal>` — Withdraw protocol fees
 - `register-relay <pubkey_hex>` — Register relay node
+- `relay-info` — Show registered relay information
 
-**Other:**
+**Diagnostics:**
 - `whoami` — Show current principal
-- `status` — Show system status
 - `rate-limit` — Show rate limit status
+- `pending-onramps` — List pending onramp requests
+- `pending-offramps` — List pending offramp requests
+
+**Testing:**
+- `set-test-timeouts <onramp_ns> <offramp_ns>` — Set swap timeouts (E2E testing)
+- `check-expired-swaps` — Manually trigger expired swap check
+- `expired-counts` — Show count of expired swaps
+
+**General:**
+- `help` / `h` — Show help
+- `exit` / `quit` / `q` — Exit
 
 ## Prerequisites
 
