@@ -1,5 +1,4 @@
 use anyhow::Result;
-use ck_lightning_client::CKLIGHTNING_LEDGER_ID;
 use cklightning::ic_types::{
 	SignedCandidInvoice,
 	RegisterRelayResponse, GetRelayInfoResponse,
@@ -10,7 +9,6 @@ use cklightning::ic_types::{
 };
 use ic_agent::{Identity, AgentError};
 use ic_agent::export::Principal;
-use ic_ledger_types::{AccountIdentifier, Subaccount};
 use ic_lightning_relay::{ICAgent, create_identity, str_home_from_path};
 use log::info;
 
@@ -18,24 +16,15 @@ use super::super::get_pem_path;
 
 /// Check ckBTC balance (fetch-key command)
 pub(crate) async fn check_ckbtc_balance() -> Result<String> {
-	info!("Fetching root key with PEM: {}", get_pem_path());
+	info!("Fetching ckBTC balance");
 
 	let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
 	agent.fetch_root_key().await?;
-
-	let can_ckl_id = Principal::from_text(CKLIGHTNING_LEDGER_ID)
-		.map_err(|e| AgentError::MessageError(format!("Invalid canister ID: {}", e)))?;
-	println!("ckLightning Ledger Canister ID: {:?}", can_ckl_id);
 
 	let str_user = str_home_from_path(get_pem_path());
 	let usr_user_id = create_identity(Some(&str_user));
 	let usr_user_pr = usr_user_id.sender()
 		.map_err(|e| AgentError::MessageError(format!("Failed to get principal from identity: {}", e)))?;
-	println!("User Principal: {:?}", usr_user_pr);
-
-	let zero_subaccount = Subaccount([0; 32]);
-	let usr_acc_id = AccountIdentifier::new(&usr_user_pr, &zero_subaccount);
-	println!("User Account ID: {:?}", usr_acc_id);
 
 	let resp_user_balance = agent
 		.icrc1_balance_of(usr_user_pr)

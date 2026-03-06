@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
     };
     IDENTITY_PEM_PATH.set(pem_path.clone()).ok();
 
-    info!("CKL CLI Started - Identity: {} ({})", cli.identity, &pem_path);
+    info!("CKL CLI Started - Identity: {}", cli.identity);
 
     loop {
         print!("ckl> ");
@@ -110,8 +110,6 @@ async fn main() -> Result<()> {
                         println!("LN Invoice created!");
                         println!("BOLT11: {}", invoice.invoice);
                         println!("Amount: {:?} msat", invoice.amount_msat);
-                        println!("Payment Hash: 0x{}", hex::encode(&invoice.payment_hash));
-                        println!("Signature: {:?}", invoice.signature);
                         println!("\nCopy BOLT11 above for Lightning payment!");
                     }
                     Err(e) => {
@@ -229,6 +227,10 @@ async fn main() -> Result<()> {
             // BTC Liquidity Pool Commands
             // =============================================================
             "lp-btc-address" => {
+                println!("WARNING: BTC LP deposits use a shared address. UTXO attribution");
+                println!("is first-come-first-served. Use only in trusted/single-LP setups.");
+                println!("For production, use ckBTC LP deposits (lp-deposit) instead.");
+                println!("");
                 match commands::lp::lp_btc_address().await {
                     Ok(resp) => {
                         println!("LP BTC Deposit Address: {}", resp.address);
@@ -822,7 +824,7 @@ async fn main() -> Result<()> {
                             println!("Pending offramp requests ({}):", requests.len());
                             for req in &requests {
                                 let amount_sats = req.amount_msat / 1000;
-                                println!("  ID: {} | {} sats | hash: 0x{}", req.request_id, amount_sats, hex::encode(&req.payment_hash));
+                                println!("  ID: {} | {} sats", req.request_id, amount_sats);
                             }
                         }
                     }
@@ -842,20 +844,20 @@ async fn main() -> Result<()> {
                 println!("");
                 println!("ICP Operations (anti-DDoS fee):");
                 println!("  icp-balance          | Check your ICP balance");
-                println!("  icp-approve <amount> | Approve ICP for canister (amount in ICP, e.g. 21)");
-                println!("  NOTE: Onramp/offramp require 1 ICP approval (refunded on success)");
+                println!("  icp-approve <amount> | Approve ICP for canister (amount in ICP, e.g. 1)");
+                println!("  NOTE: Onramp/offramp require 1 ICP anti-DDoS fee (refunded on success)");
                 println!("");
                 println!("ckBTC Operations:");
                 println!("  ckbtc-balance        | Check your ckBTC balance");
                 println!("  lp-approve <amount>  | Approve canister to spend ckBTC");
                 println!("");
                 println!("Onramp (Lightning -> ckBTC):");
-                println!("  REQUIRES: icp-approve 2");
+                println!("  REQUIRES: icp-approve 1");
                 println!("  request-onramp <sats> | Request invoice to receive ckBTC");
                 println!("  get-invoice <id>      | Get invoice for request (poll until ready)");
                 println!("");
                 println!("Offramp (ckBTC -> Lightning):");
-                println!("  REQUIRES: icp-approve 2 && lp-approve <ckBTC amount>");
+                println!("  REQUIRES: icp-approve 1 && lp-approve <ckBTC amount>");
                 println!("  offramp <invoice> [fallback_addr] | Exchange ckBTC for Lightning BTC");
                 println!("  offramp-status <id>  | Check offramp request status");
                 println!("");
@@ -865,10 +867,11 @@ async fn main() -> Result<()> {
                 println!("  lp-balance           | Show your LP balance");
                 println!("  lp-total             | Show total LP balance");
                 println!("");
-                println!("BTC Liquidity Pool:");
+                println!("BTC Liquidity Pool (shared address — use with caution):");
                 println!("  lp-btc-address       | Get shared LP BTC deposit address");
                 println!("  lp-btc-deposit [txid]| Claim BTC deposit (after sending to LP address)");
                 println!("  lp-btc-withdraw <amount> <address> | Withdraw BTC from LP");
+                println!("  NOTE: BTC deposits use shared address; prefer ckBTC LP for production");
                 println!("");
                 println!("Lightning:");
                 println!("  ln-address           | Get Lightning address");
