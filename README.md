@@ -2,6 +2,15 @@
 
 CLI tool for interacting with the ckLightning canister. Supports LP operations, swap requests, admin configuration, and balance queries.
 
+## Related Components
+
+| Component | Repo | Role |
+|-----------|------|------|
+| **ckLightning-canister** | [perun-network/ckLightning-canister](https://github.com/perun-network/ckLightning-canister) | IC canister — LP management, swap state, channel signing |
+| **ic-lightning-relay** | [perun-network/ic-lightning-relay](https://github.com/perun-network/ic-lightning-relay) | LDK Lightning node — swap execution, invoice creation, channel management |
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed component design.
+
 ## Build
 
 ```bash
@@ -61,7 +70,7 @@ cargo build --release --bin main
 - `pending-offramps` — List pending offramp requests
 
 **Testing:**
-- `set-test-timeouts <onramp_ns> <offramp_ns>` — Set swap timeouts (E2E testing)
+- `set-test-timeouts <onramp_ns> <offramp_ns>` — Set swap timeouts (testing)
 - `check-expired-swaps` — Manually trigger expired swap check
 - `expired-counts` — Show count of expired swaps
 
