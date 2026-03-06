@@ -48,7 +48,14 @@ async fn main() -> Result<()> {
     let pem_path = match cli.identity.as_str() {
         "node" => PEM_NODE_ACC_PATH.to_string(),
         "user" => PEM_USER_ACC_PATH.to_string(),
-        name => format!(".config/dfx/identity/{}/identity.pem", name),
+        name => {
+            // Reject path traversal characters in identity names
+            if name.contains('/') || name.contains('\\') || name.contains("..") {
+                eprintln!("Invalid identity name: must not contain path separators or '..'");
+                std::process::exit(1);
+            }
+            format!(".config/dfx/identity/{}/identity.pem", name)
+        }
     };
     IDENTITY_PEM_PATH.set(pem_path.clone()).ok();
 

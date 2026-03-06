@@ -203,6 +203,7 @@ mod tests {
     use bitcoin::hashes::Hash as HashTrait;
     use bitcoin::secp256k1::{Secp256k1, SecretKey};
     use lightning_invoice::{Currency, InvoiceBuilder};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     /// Helper to create a test BOLT11 invoice
     fn create_test_bolt11(description: &str, amount_msat: Option<u64>) -> Bolt11Invoice {
