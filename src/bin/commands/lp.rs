@@ -1,4 +1,3 @@
-use anyhow::Result;
 use candid::Nat;
 use ck_lightning_client::CKLIGHTNING_LEDGER_ID;
 use cklightning::ic_types::{

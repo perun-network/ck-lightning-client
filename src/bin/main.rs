@@ -22,6 +22,9 @@ use log::{error, info};
 use std::io::Write;
 use std::sync::OnceLock;
 
+/// 1 ICP = 100,000,000 e8s (the smallest ICP unit).
+const E8S_PER_ICP: u64 = 100_000_000;
+
 // Global identity path (set at startup)
 static IDENTITY_PEM_PATH: OnceLock<String> = OnceLock::new();
 
@@ -76,6 +79,7 @@ async fn main() -> Result<()> {
         }
 
         let parts: Vec<&str> = input.split_whitespace().collect();
+        // parts is guaranteed non-empty because we checked input.is_empty() above
         match parts[0] {
             "fetch-key" => {
                 match commands::admin::check_ckbtc_balance().await {
@@ -383,9 +387,15 @@ async fn main() -> Result<()> {
                 match commands::swap::get_user_icp_balance().await {
                     Ok(balance) => {
                         // Balance is in e8s (1 ICP = 100_000_000 e8s)
-                        let balance_e8s: u64 = balance.0.to_string().parse().unwrap_or(0);
-                        let whole = balance_e8s / 100_000_000;
-                        let frac = balance_e8s % 100_000_000;
+                        let balance_e8s: u64 = match balance.0.to_string().parse() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            eprintln!("Error: balance too large to display as u64");
+                            continue;
+                        }
+                    };
+                        let whole = balance_e8s / E8S_PER_ICP;
+                        let frac = balance_e8s % E8S_PER_ICP;
                         println!("Your ICP Balance: {}.{:08} ICP ({} e8s)", whole, frac, balance);
                     }
                     Err(e) => {
@@ -398,15 +408,27 @@ async fn main() -> Result<()> {
                 let amount_str = parts[1];
                 // Parse as e8s: support both whole (2) and decimal (0.5) ICP
                 let amount_e8s: u64 = if let Some(dot_pos) = amount_str.find('.') {
-                    let whole: u64 = amount_str[..dot_pos].parse().unwrap_or(0);
+                    let whole: u64 = match amount_str[..dot_pos].parse() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            eprintln!("Invalid ICP amount: {}", amount_str);
+                            continue;
+                        }
+                    };
                     let frac_str = &amount_str[dot_pos + 1..];
                     let frac_padded = format!("{:0<8}", frac_str);
-                    let frac: u64 = frac_padded[..8].parse().unwrap_or(0);
-                    whole * 100_000_000 + frac
+                    let frac: u64 = match frac_padded[..8].parse() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            eprintln!("Invalid ICP fraction: {}", amount_str);
+                            continue;
+                        }
+                    };
+                    whole * E8S_PER_ICP + frac
                 } else {
                     let whole: u64 = amount_str.parse()
                         .map_err(|_| anyhow::anyhow!("Invalid amount (e.g. 2 or 0.5)"))?;
-                    whole * 100_000_000
+                    whole * E8S_PER_ICP
                 };
 
                 match commands::swap::icp_approve(amount_e8s).await {
@@ -863,11 +885,10 @@ async fn main() -> Result<()> {
                 println!("  lp-balance           | Show your LP balance");
                 println!("  lp-total             | Show total LP balance");
                 println!("");
-                println!("BTC Liquidity Pool (shared address — use with caution):");
+                println!("BTC Liquidity Pool:");
                 println!("  lp-btc-address       | Get your per-user LP BTC deposit address");
                 println!("  lp-btc-deposit [txid]| Claim BTC deposit (after sending to your LP address)");
                 println!("  lp-btc-withdraw <amount> <address> | Withdraw BTC from LP");
-                println!("  NOTE: BTC deposits use shared address; prefer ckBTC LP for production");
                 println!("");
                 println!("Lightning:");
                 println!("  ln-address           | Get Lightning address");
@@ -892,7 +913,6 @@ async fn main() -> Result<()> {
                 println!("");
                 println!("Other:");
                 println!("  fetch-key            | Check ckBTC balance");
-                println!("  status               | Show status");
                 println!("  help                 | Show this help");
                 println!("  exit/quit            | Stop");
             }

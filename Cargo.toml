@@ -4,11 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1.23.0", features = ["full"] }
+tokio = { version = "1.23.0", features = ["rt", "rt-multi-thread", "macros"] }
 ic-lightning-relay = { path = "../ic-lightning-relay" }
 cklightning = { path = "../ckLightning-canister" }
+# Pinned to match canister + relay crate dependency (candid API compatibility)
 candid = "=0.10.19"
 anyhow = "1.0.100"
+# Pinned to match canister crate dependency (serde_bytes compatibility)
 serde = "=1.0.219"
 ic-agent = { version = "0.39.3", features = ["wasm-bindgen"] }
 clap = { version = "4.5", features = ["derive"] }
