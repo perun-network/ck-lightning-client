@@ -227,10 +227,6 @@ async fn main() -> Result<()> {
             // BTC Liquidity Pool Commands
             // =============================================================
             "lp-btc-address" => {
-                println!("WARNING: BTC LP deposits use a shared address. UTXO attribution");
-                println!("is first-come-first-served. Use only in trusted/single-LP setups.");
-                println!("For production, use ckBTC LP deposits (lp-deposit) instead.");
-                println!("");
                 match commands::lp::lp_btc_address().await {
                     Ok(resp) => {
                         println!("LP BTC Deposit Address: {}", resp.address);
@@ -868,8 +864,8 @@ async fn main() -> Result<()> {
                 println!("  lp-total             | Show total LP balance");
                 println!("");
                 println!("BTC Liquidity Pool (shared address — use with caution):");
-                println!("  lp-btc-address       | Get shared LP BTC deposit address");
-                println!("  lp-btc-deposit [txid]| Claim BTC deposit (after sending to LP address)");
+                println!("  lp-btc-address       | Get your per-user LP BTC deposit address");
+                println!("  lp-btc-deposit [txid]| Claim BTC deposit (after sending to your LP address)");
                 println!("  lp-btc-withdraw <amount> <address> | Withdraw BTC from LP");
                 println!("  NOTE: BTC deposits use shared address; prefer ckBTC LP for production");
                 println!("");
