@@ -631,8 +631,15 @@ async fn main() -> Result<()> {
                     continue;
                 }
 
+                // Optional: register-relay <pubkey> [webhook_url] [webhook_token]
+                let webhook_url = parts.get(2).map(|s| s.to_string());
+                let webhook_token = parts.get(3).map(|s| s.to_string());
+
                 println!("Registering relay with node pubkey: {}", pubkey_hex);
-                match commands::admin::register_relay(node_pubkey).await {
+                if let Some(ref url) = webhook_url {
+                    println!("  Webhook URL: {}", url);
+                }
+                match commands::admin::register_relay(node_pubkey, webhook_url, webhook_token).await {
                     Ok(resp) => {
                         if resp.success {
                             println!("Relay registered successfully!");
@@ -895,7 +902,7 @@ async fn main() -> Result<()> {
                 println!("  ln-invoice <amt> <addr> | Create Lightning invoice");
                 println!("");
                 println!("Relay Registration (for relay operators):");
-                println!("  register-relay <pubkey_hex> | Register relay with Lightning node pubkey");
+                println!("  register-relay <pubkey_hex> [webhook_url] [webhook_token] | Register relay");
                 println!("  relay-info           | Show registered relay info");
                 println!("");
                 println!("Rate Limiting:");

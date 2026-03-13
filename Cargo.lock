@@ -265,12 +265,6 @@ dependencies = [
 
 [[package]]
 name = "base64"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
-
-[[package]]
-name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
@@ -552,7 +546,7 @@ dependencies = [
  "async-trait",
  "bitcoin 0.32.8",
  "candid",
- "digest 0.9.0",
+ "digest 0.10.7",
  "getrandom 0.2.16",
  "hex",
  "ic-cdk",
@@ -567,7 +561,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_bytes",
- "sha2 0.9.9",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -1244,7 +1238,7 @@ version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "727805d60e7938b76b826a6ef209eb70eaa1812794f9424d4a4e2d740662df5f"
 dependencies = [
- "base64 0.22.1",
+ "base64",
  "bytes",
  "futures-channel",
  "futures-core",
@@ -1423,7 +1417,7 @@ name = "ic-lightning-relay"
 version = "0.1.0"
 dependencies = [
  "axum",
- "base64 0.13.1",
+ "base64",
  "bech32 0.8.1",
  "bitcoin 0.32.8",
  "bitcoin-bech32",
@@ -2087,7 +2081,7 @@ version = "3.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38af38e8470ac9dee3ce1bae1af9c1671fffc44ddfd8bd1d0a3445bf349a8ef3"
 dependencies = [
- "base64 0.22.1",
+ "base64",
  "serde",
 ]
 
@@ -2426,7 +2420,7 @@ version = "0.12.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6eff9328d40131d43bd911d42d79eb6a47312002a4daefc9e37f17e74a7701a"
 dependencies = [
- "base64 0.22.1",
+ "base64",
  "bytes",
  "futures-channel",
  "futures-core",

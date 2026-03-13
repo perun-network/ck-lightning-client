@@ -69,14 +69,18 @@ pub(crate) async fn get_ln_invoice(
 	Ok(signed_invoice)
 }
 
-/// Register a relay with its Lightning node pubkey
-pub(crate) async fn register_relay(node_pubkey: Vec<u8>) -> Result<RegisterRelayResponse, Box<dyn std::error::Error>> {
+/// Register a relay with its Lightning node pubkey and optional webhook URL/token
+pub(crate) async fn register_relay(
+	node_pubkey: Vec<u8>,
+	webhook_url: Option<String>,
+	webhook_token: Option<String>,
+) -> Result<RegisterRelayResponse, Box<dyn std::error::Error>> {
 	info!("Registering relay with node pubkey: {}", hex::encode(&node_pubkey));
 
 	let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
 	agent.fetch_root_key().await?;
 
-	let resp = agent.register_relay(node_pubkey, None, None).await?;
+	let resp = agent.register_relay(node_pubkey, webhook_url, webhook_token).await?;
 
 	info!("Relay registration complete: success={}", resp.success);
 	Ok(resp)
