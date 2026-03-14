@@ -669,6 +669,14 @@ async fn main() -> Result<()> {
                             if let Some(active) = info.is_active {
                                 println!("  Active:     {}", active);
                             }
+                            match &info.relay_http_url {
+                                Some(url) => println!("  Webhook URL: {}", url),
+                                None => println!("  Webhook URL: not configured"),
+                            }
+                            match info.has_auth_token {
+                                Some(true) => println!("  Auth Token:  configured"),
+                                _ => println!("  Auth Token:  not configured"),
+                            }
                         } else {
                             println!("No relay registered");
                         }
