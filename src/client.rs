@@ -11,7 +11,6 @@
 //  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
-use anyhow::Result;
 use candid::{Nat, Principal};
 use cklightning::ic_types::SignedCandidInvoice;
 use ic_lightning_relay::ICAgent;

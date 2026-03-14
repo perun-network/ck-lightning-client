@@ -21,4 +21,3 @@ pub mod invoice;
 pub use crate::client::CkLightningClient;
 pub use candid_invoice::{bolt11_to_candid, candid_to_bolt11};
 pub use ic_params::*;
-// pub use invoice::{build_pay_invoice, print_pay_invoice};  // Commented out - incompatible with lightning-invoice 0.33

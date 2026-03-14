@@ -1,4 +1,3 @@
-use anyhow::Result;
 use candid::Nat;
 use ck_lightning_client::CKLIGHTNING_LEDGER_ID;
 use cklightning::ic_types::{
@@ -77,27 +76,27 @@ pub(crate) async fn lp_total() -> Result<TotalLpBalanceResponse, Box<dyn std::er
 	Ok(resp)
 }
 
-/// Get the shared LP BTC address for deposits
+/// Get the caller's per-user LP BTC deposit address
 pub(crate) async fn lp_btc_address() -> Result<LpBtcAddressResponse, Box<dyn std::error::Error>> {
-	info!("Fetching LP BTC address");
+	info!("Fetching per-user LP BTC address");
 
 	let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
 	agent.fetch_root_key().await?;
 
-	let resp = agent.get_lp_btc_address().await?;
+	let resp = agent.get_lp_btc_user_address().await?;
 
-	info!("LP BTC address fetched");
+	info!("LP BTC user address fetched");
 	Ok(resp)
 }
 
-/// Claim a BTC deposit to the liquidity pool
+/// Claim a BTC deposit to the liquidity pool (per-user address)
 pub(crate) async fn lp_btc_deposit(txid: Option<Vec<u8>>) -> Result<LpBtcDepositResponse, Box<dyn std::error::Error>> {
-	info!("Claiming BTC deposit");
+	info!("Claiming BTC deposit (per-user address)");
 
 	let agent = ICAgent::new_from_pem_file(Some(str_home_from_path(get_pem_path())))?;
 	agent.fetch_root_key().await?;
 
-	let resp = agent.deposit_btc(txid, 0).await?;
+	let resp = agent.deposit_btc_user(txid, 0).await?;
 
 	info!("BTC deposit claim complete: success={}", resp.success);
 	Ok(resp)

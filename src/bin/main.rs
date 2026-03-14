@@ -22,6 +22,9 @@ use log::{error, info};
 use std::io::Write;
 use std::sync::OnceLock;
 
+/// 1 ICP = 100,000,000 e8s (the smallest ICP unit).
+const E8S_PER_ICP: u64 = 100_000_000;
+
 // Global identity path (set at startup)
 static IDENTITY_PEM_PATH: OnceLock<String> = OnceLock::new();
 
@@ -48,11 +51,18 @@ async fn main() -> Result<()> {
     let pem_path = match cli.identity.as_str() {
         "node" => PEM_NODE_ACC_PATH.to_string(),
         "user" => PEM_USER_ACC_PATH.to_string(),
-        name => format!(".config/dfx/identity/{}/identity.pem", name),
+        name => {
+            // Reject path traversal characters in identity names
+            if name.contains('/') || name.contains('\\') || name.contains("..") {
+                eprintln!("Invalid identity name: must not contain path separators or '..'");
+                std::process::exit(1);
+            }
+            format!(".config/dfx/identity/{}/identity.pem", name)
+        }
     };
     IDENTITY_PEM_PATH.set(pem_path.clone()).ok();
 
-    info!("CKL CLI Started - Identity: {} ({})", cli.identity, &pem_path);
+    info!("CKL CLI Started - Identity: {}", cli.identity);
 
     loop {
         print!("ckl> ");
@@ -69,6 +79,7 @@ async fn main() -> Result<()> {
         }
 
         let parts: Vec<&str> = input.split_whitespace().collect();
+        // parts is guaranteed non-empty because we checked input.is_empty() above
         match parts[0] {
             "fetch-key" => {
                 match commands::admin::check_ckbtc_balance().await {
@@ -103,8 +114,6 @@ async fn main() -> Result<()> {
                         println!("LN Invoice created!");
                         println!("BOLT11: {}", invoice.invoice);
                         println!("Amount: {:?} msat", invoice.amount_msat);
-                        println!("Payment Hash: 0x{}", hex::encode(&invoice.payment_hash));
-                        println!("Signature: {:?}", invoice.signature);
                         println!("\nCopy BOLT11 above for Lightning payment!");
                     }
                     Err(e) => {
@@ -378,9 +387,15 @@ async fn main() -> Result<()> {
                 match commands::swap::get_user_icp_balance().await {
                     Ok(balance) => {
                         // Balance is in e8s (1 ICP = 100_000_000 e8s)
-                        let balance_e8s: u64 = balance.0.to_string().parse().unwrap_or(0);
-                        let whole = balance_e8s / 100_000_000;
-                        let frac = balance_e8s % 100_000_000;
+                        let balance_e8s: u64 = match balance.0.to_string().parse() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            eprintln!("Error: balance too large to display as u64");
+                            continue;
+                        }
+                    };
+                        let whole = balance_e8s / E8S_PER_ICP;
+                        let frac = balance_e8s % E8S_PER_ICP;
                         println!("Your ICP Balance: {}.{:08} ICP ({} e8s)", whole, frac, balance);
                     }
                     Err(e) => {
@@ -393,15 +408,27 @@ async fn main() -> Result<()> {
                 let amount_str = parts[1];
                 // Parse as e8s: support both whole (2) and decimal (0.5) ICP
                 let amount_e8s: u64 = if let Some(dot_pos) = amount_str.find('.') {
-                    let whole: u64 = amount_str[..dot_pos].parse().unwrap_or(0);
+                    let whole: u64 = match amount_str[..dot_pos].parse() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            eprintln!("Invalid ICP amount: {}", amount_str);
+                            continue;
+                        }
+                    };
                     let frac_str = &amount_str[dot_pos + 1..];
                     let frac_padded = format!("{:0<8}", frac_str);
-                    let frac: u64 = frac_padded[..8].parse().unwrap_or(0);
-                    whole * 100_000_000 + frac
+                    let frac: u64 = match frac_padded[..8].parse() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            eprintln!("Invalid ICP fraction: {}", amount_str);
+                            continue;
+                        }
+                    };
+                    whole * E8S_PER_ICP + frac
                 } else {
                     let whole: u64 = amount_str.parse()
                         .map_err(|_| anyhow::anyhow!("Invalid amount (e.g. 2 or 0.5)"))?;
-                    whole * 100_000_000
+                    whole * E8S_PER_ICP
                 };
 
                 match commands::swap::icp_approve(amount_e8s).await {
@@ -604,8 +631,15 @@ async fn main() -> Result<()> {
                     continue;
                 }
 
+                // Optional: register-relay <pubkey> [webhook_url] [webhook_token]
+                let webhook_url = parts.get(2).map(|s| s.to_string());
+                let webhook_token = parts.get(3).map(|s| s.to_string());
+
                 println!("Registering relay with node pubkey: {}", pubkey_hex);
-                match commands::admin::register_relay(node_pubkey).await {
+                if let Some(ref url) = webhook_url {
+                    println!("  Webhook URL: {}", url);
+                }
+                match commands::admin::register_relay(node_pubkey, webhook_url, webhook_token).await {
                     Ok(resp) => {
                         if resp.success {
                             println!("Relay registered successfully!");
@@ -815,7 +849,7 @@ async fn main() -> Result<()> {
                             println!("Pending offramp requests ({}):", requests.len());
                             for req in &requests {
                                 let amount_sats = req.amount_msat / 1000;
-                                println!("  ID: {} | {} sats | hash: 0x{}", req.request_id, amount_sats, hex::encode(&req.payment_hash));
+                                println!("  ID: {} | {} sats", req.request_id, amount_sats);
                             }
                         }
                     }
@@ -835,20 +869,20 @@ async fn main() -> Result<()> {
                 println!("");
                 println!("ICP Operations (anti-DDoS fee):");
                 println!("  icp-balance          | Check your ICP balance");
-                println!("  icp-approve <amount> | Approve ICP for canister (amount in ICP, e.g. 21)");
-                println!("  NOTE: Onramp/offramp require 1 ICP approval (refunded on success)");
+                println!("  icp-approve <amount> | Approve ICP for canister (amount in ICP, e.g. 1)");
+                println!("  NOTE: Onramp/offramp require 1 ICP anti-DDoS fee (refunded on success)");
                 println!("");
                 println!("ckBTC Operations:");
                 println!("  ckbtc-balance        | Check your ckBTC balance");
                 println!("  lp-approve <amount>  | Approve canister to spend ckBTC");
                 println!("");
                 println!("Onramp (Lightning -> ckBTC):");
-                println!("  REQUIRES: icp-approve 2");
+                println!("  REQUIRES: icp-approve 1");
                 println!("  request-onramp <sats> | Request invoice to receive ckBTC");
                 println!("  get-invoice <id>      | Get invoice for request (poll until ready)");
                 println!("");
                 println!("Offramp (ckBTC -> Lightning):");
-                println!("  REQUIRES: icp-approve 2 && lp-approve <ckBTC amount>");
+                println!("  REQUIRES: icp-approve 1 && lp-approve <ckBTC amount>");
                 println!("  offramp <invoice> [fallback_addr] | Exchange ckBTC for Lightning BTC");
                 println!("  offramp-status <id>  | Check offramp request status");
                 println!("");
@@ -859,8 +893,8 @@ async fn main() -> Result<()> {
                 println!("  lp-total             | Show total LP balance");
                 println!("");
                 println!("BTC Liquidity Pool:");
-                println!("  lp-btc-address       | Get shared LP BTC deposit address");
-                println!("  lp-btc-deposit [txid]| Claim BTC deposit (after sending to LP address)");
+                println!("  lp-btc-address       | Get your per-user LP BTC deposit address");
+                println!("  lp-btc-deposit [txid]| Claim BTC deposit (after sending to your LP address)");
                 println!("  lp-btc-withdraw <amount> <address> | Withdraw BTC from LP");
                 println!("");
                 println!("Lightning:");
@@ -868,7 +902,7 @@ async fn main() -> Result<()> {
                 println!("  ln-invoice <amt> <addr> | Create Lightning invoice");
                 println!("");
                 println!("Relay Registration (for relay operators):");
-                println!("  register-relay <pubkey_hex> | Register relay with Lightning node pubkey");
+                println!("  register-relay <pubkey_hex> [webhook_url] [webhook_token] | Register relay");
                 println!("  relay-info           | Show registered relay info");
                 println!("");
                 println!("Rate Limiting:");
@@ -886,7 +920,6 @@ async fn main() -> Result<()> {
                 println!("");
                 println!("Other:");
                 println!("  fetch-key            | Check ckBTC balance");
-                println!("  status               | Show status");
                 println!("  help                 | Show this help");
                 println!("  exit/quit            | Stop");
             }
