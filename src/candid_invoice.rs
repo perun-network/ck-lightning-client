@@ -101,26 +101,12 @@ pub fn bolt11_to_candid(
     signature_bytes: Option<Vec<u8>>,
     channel_id: Option<Vec<u8>>,
 ) -> SignedCandidInvoice {
-    // BOLT11 string
     let invoice_str = bolt11.to_string();
-
-    // Amount in msat
     let amount_msat = bolt11.amount_milli_satoshis().map(Nat::from);
-
-    // Payment hash (32 bytes)
     let payment_hash = bolt11.payment_hash().to_byte_array().to_vec();
-
-    // Payment secret (32 bytes)
     let payment_secret = bolt11.payment_secret().0.to_vec();
-
-    // Timestamp: get from invoice creation time
-    // BOLT11 invoices store timestamp as seconds since epoch
     let timestamp = bolt11.duration_since_epoch().as_secs();
-
-    // Expiry: Duration -> seconds
     let expiry_secs = Some(bolt11.expiry_time().as_secs());
-
-    // Currency string
     let currency = format!("{:?}", bolt11.currency());
 
     // Channel ID (default to zeros if not provided)
@@ -149,7 +135,6 @@ fn verify_candid_matches_bolt11(
     candid: &SignedCandidInvoice,
     bolt11: &Bolt11Invoice,
 ) -> ConversionResult<()> {
-    // Check payment hash
     let bolt11_payment_hash = bolt11.payment_hash().to_byte_array().to_vec();
     if candid.payment_hash != bolt11_payment_hash {
         return Err(CandidConversionError::FieldMismatch(format!(
@@ -158,7 +143,6 @@ fn verify_candid_matches_bolt11(
         )));
     }
 
-    // Check payment secret
     let bolt11_payment_secret = bolt11.payment_secret().0.to_vec();
     if candid.payment_secret != bolt11_payment_secret {
         return Err(CandidConversionError::FieldMismatch(format!(
@@ -183,10 +167,8 @@ fn verify_candid_matches_bolt11(
         }
     }
 
-    // Check timestamp (with some tolerance for rounding)
-    let bolt11_timestamp = bolt11.duration_since_epoch().as_secs();
-
     // Allow up to 1 second difference due to rounding
+    let bolt11_timestamp = bolt11.duration_since_epoch().as_secs();
     if candid.timestamp.abs_diff(bolt11_timestamp) > 1 {
         return Err(CandidConversionError::FieldMismatch(format!(
             "Timestamp mismatch: Candid has {}, BOLT11 has {}",

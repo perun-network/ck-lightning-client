@@ -25,7 +25,7 @@ impl CkLightningClient {
     }
 
     pub async fn icrc1_balance_of(&self, pr: Principal) -> Result<Nat, Box<dyn std::error::Error>> {
-        let bal_res = self.agent.icrc1_balance_of(pr).await?; //self.icrc1_balance_of(pr).await?;
+        let bal_res = self.agent.icrc1_balance_of(pr).await?;
         Ok(bal_res)
     }
 

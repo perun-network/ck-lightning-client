@@ -92,8 +92,8 @@ The `ICAgent` is imported from the `ic-lightning-relay` crate. Canister IDs are 
 | `lp-withdraw <sats>` | `withdraw_ckbtc` |
 | `lp-balance` | `get_my_lp_balance` |
 | `lp-total` | `get_total_lp_balance` |
-| `lp-btc-address` | `get_lp_btc_address` |
-| `lp-btc-deposit [txid]` | `deposit_btc` |
+| `lp-btc-address` | `get_lp_btc_user_address` |
+| `lp-btc-deposit [txid]` | `deposit_btc_user` |
 | `lp-btc-withdraw <sats> <addr>` | `withdraw_btc` |
 
 ### Admin Commands (admin.rs)
