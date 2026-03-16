@@ -60,7 +60,7 @@ cargo build --release --bin main
 - `set-admin <principal>` — Set admin principal
 - `update-config [--amp N] [--fee N] [--protocol-fee N] [--slippage N] [--imbalance-fee N] [--rebate N] [--max-swap-pct N]` — Update StableSwap parameters
 - `withdraw-fees <principal>` — Withdraw protocol fees
-- `register-relay <pubkey_hex>` — Register relay node
+- `register-relay <pubkey_hex> [webhook_url] [webhook_token]` — Register relay node
 - `relay-info` — Show registered relay information
 
 **Diagnostics:**
