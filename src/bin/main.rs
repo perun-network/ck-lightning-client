@@ -46,8 +46,7 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    // Set identity based on CLI argument
-    // Supports "user", "node", "default", or any dfx identity name
+    // Set identity (user, node, default, or custom dfx identity name)
     let pem_path = match cli.identity.as_str() {
         "node" => PEM_NODE_ACC_PATH.to_string(),
         "user" => PEM_USER_ACC_PATH.to_string(),
@@ -79,7 +78,6 @@ async fn main() -> Result<()> {
         }
 
         let parts: Vec<&str> = input.split_whitespace().collect();
-        // parts is guaranteed non-empty because we checked input.is_empty() above
         match parts[0] {
             "fetch-key" => {
                 match commands::admin::check_ckbtc_balance().await {
@@ -668,6 +666,14 @@ async fn main() -> Result<()> {
                             }
                             if let Some(active) = info.is_active {
                                 println!("  Active:     {}", active);
+                            }
+                            match &info.relay_http_url {
+                                Some(url) => println!("  Webhook URL: {}", url),
+                                None => println!("  Webhook URL: not configured"),
+                            }
+                            match info.has_auth_token {
+                                Some(true) => println!("  Auth Token:  configured"),
+                                _ => println!("  Auth Token:  not configured"),
                             }
                         } else {
                             println!("No relay registered");
