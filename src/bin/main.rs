@@ -435,7 +435,7 @@ async fn main() -> Result<()> {
                         println!("Block index: {}", block_idx);
                         println!("");
                         println!("You can now use onramp/offramp commands.");
-                        println!("(1 ICP anti-DDoS fee will be collected and refunded on success)");
+                        println!("(0.001 ICP anti-DDoS fee will be collected and refunded on success)");
                     }
                     Err(e) => {
                         error!("icp-approve failed: {}", e);
@@ -876,7 +876,7 @@ async fn main() -> Result<()> {
                 println!("ICP Operations (anti-DDoS fee):");
                 println!("  icp-balance          | Check your ICP balance");
                 println!("  icp-approve <amount> | Approve ICP for canister (amount in ICP, e.g. 1)");
-                println!("  NOTE: Onramp/offramp require 1 ICP anti-DDoS fee (refunded on success)");
+                println!("  NOTE: Onramp/offramp require 0.001 ICP anti-DDoS fee (refunded on success)");
                 println!("");
                 println!("ckBTC Operations:");
                 println!("  ckbtc-balance        | Check your ckBTC balance");
