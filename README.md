@@ -11,17 +11,42 @@ CLI tool for interacting with the ckLightning canister. Supports LP operations, 
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed component design.
 
+> **Status (September 2026):** prototype used on a local replica and on IC mainnet with ckTESTBTC only.
+
+## Branches
+
+| Branch | Canister IDs and identities compiled in (`src/ic_params.rs`) |
+|---|---|
+| `main` | local replica (`vizcg-th777-77774-qaaea-cai` …), PEMs `user` / `node` |
+| `staging-april-deployment` | IC mainnet ckTESTBTC staging (`5iwit-tiaaa-aaaau-aelaa-cai` …), PEMs `staging-user` / `staging-deployer` |
+
 ## Build
 
+The crate has path dependencies on the relay and canister repos. Check them out next to this repo
+(directory names `ic-lightning-relay` and `ckLightning-canister`) on the matching branch family:
+
+```
+$WORKSPACE/ckLightning-canister   $WORKSPACE/ic-lightning-relay   $WORKSPACE/ckLightning-client
+```
+
 ```bash
-cargo build --release --bin main
+cargo build --locked --release --bin main     # verified with Rust 1.88.0 from fresh clones, ~4 min cold
 ```
 
 ## Usage
 
 ```bash
-./target/release/main [--identity <user|node|default|dfx_identity_name>]
+IC_URL=http://127.0.0.1:4943 ./target/release/main [--identity <user|node|default|dfx_identity_name>]
+IC_URL=https://ic0.app       ./target/release/main -i staging-user        # IC mainnet
 ```
+
+- `IC_URL` defaults to the local replica; the root key is only fetched for localhost URLs.
+- `--identity` / `-i` loads the plaintext PEM at `~/.config/dfx/identity/<name>/identity.pem` (`user` and
+  `node` map to the paths in `src/ic_params.rs`). Password-protected or keyring identities cannot be read.
+- The REPL must run interactively or under `expect`: piping commands in makes it spin at 100 % CPU once
+  stdin ends.
+- Units: `icp-approve` takes **ICP** as a decimal (`icp-approve 0.0015`); other amounts are sats, except
+  `ln-invoice` (msat) and `set-test-timeouts` (nanoseconds).
 
 ### Commands
 
@@ -38,7 +63,7 @@ cargo build --release --bin main
 - `lp-balance` / `lp-total` — Show LP balances
 
 **Liquidity Pool (BTC):**
-- `lp-btc-address` — Get shared LP BTC deposit address
+- `lp-btc-address` — Get your per-user LP BTC deposit address
 - `lp-btc-deposit [txid]` — Claim BTC deposit
 - `lp-btc-withdraw <amount> <address>` — Withdraw BTC from LP
 
@@ -80,9 +105,10 @@ cargo build --release --bin main
 
 ## Prerequisites
 
-- Rust toolchain (stable)
+- Rust toolchain (1.88.0 verified)
 - `dfx` with local IC environment and PEM identities
-- Canister deployed via `setup_all.sh`
+- Canister deployed via `ckLightning-canister/ic/setup_all.sh` (warning: that script deletes `~/.config/dfx/`,
+  i.e. all dfx identities of the current user — see the canister README)
 
 ## Copyright
 
