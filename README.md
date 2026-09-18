@@ -9,7 +9,8 @@ CLI tool for interacting with the ckLightning canister. Supports LP operations, 
 | **ckLightning-canister** | [perun-network/ckLightning-canister](https://github.com/perun-network/ckLightning-canister) | IC canister — LP management, swap state, channel signing |
 | **ic-lightning-relay** | [perun-network/ic-lightning-relay](https://github.com/perun-network/ic-lightning-relay) | LDK Lightning node — swap execution, invoice creation, channel management |
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed component design.
+Swapping and providing liquidity step by step: [USAGE.md](USAGE.md). Component design:
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 > **Status (September 2026):** prototype used on a local replica and on IC mainnet with ckTESTBTC only.
 
