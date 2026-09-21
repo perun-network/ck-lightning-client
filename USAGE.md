@@ -38,11 +38,14 @@ ckl> icp-balance     # ICP for the anti-DDoS fee
   `dfx canister call <canister id> get_icp_ddos_fee '()' --network ic --query`. Approve the fee plus the
   ICP ledger fee of 0.0001 and some slack — `icp-approve 0.0015` against the staging value,
   `icp-approve 2` against the default.
-- Paying ckBTC to the canister (offramp, LP deposit) needs an ICRC-2 approval that covers the amount plus
-  the ledger transfer fee (10 sats): for a 10 000-sat offramp use `lp-approve 11000`.
+- Paying ckBTC to the canister needs an ICRC-2 approval. For an LP deposit, approve the amount plus the
+  ledger transfer fee (10 sats). For an offramp the canister also takes the StableSwap fee, so approve a
+  margin on top: for a 10 000-sat offramp use `lp-approve 11000`.
 - Swap pricing follows a StableSwap curve: a small fee, higher when your swap pushes the pool further out
-  of balance, plus a slippage limit that rejects extreme swaps. Preview a swap before committing — from
-  the relay REPL, `swap-quote btc2ckbtc 20000`.
+  of balance, plus a slippage limit that rejects extreme swaps. Preview a swap before committing (the
+  client has no quote command):
+  `dfx canister call <canister id> get_swap_quote '(record { direction = variant { BtcToCkbtc }; amount_sats = 20_000 : nat64 })' --network ic --query`
+  (`CkbtcToBtc` for an offramp).
 - You may make 10 onramp and 10 offramp requests per hour; `rate-limit` shows your counters.
 
 ## 3. Onramp: Lightning BTC → ckBTC
@@ -136,8 +139,8 @@ Withdrawals cover only BTC that is not locked in a channel.
 `btc-send <sats> <address>` spends from it. This is separate from the LP pool: BTC there is yours and is
 not used for swaps.
 
-Do not use the legacy `set-btc-address` path or the `get_p2*_address` endpoints. They derive a fixed
-address that is not tied to your principal, so several users can end up sharing one address.
+`btc-address` is the only address command you need. The canister's legacy `set_btc_address` endpoint is
+deprecated and will be removed; do not call it.
 
 ## 7. When something goes wrong
 
