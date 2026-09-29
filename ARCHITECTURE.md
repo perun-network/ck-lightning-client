@@ -6,7 +6,7 @@ The ckLightning client is a Rust CLI tool providing a REPL interface for interac
 
 It is not a standalone crate: `Cargo.toml` has path dependencies on `../ic-lightning-relay` (for `ICAgent` and the compiled-in identity paths) and `../ckLightning-canister` (Candid types). All three repos must be checked out side by side on matching branches.
 
-_Updated 2026-09-15 for the handover; verified against `main` and `staging-april-deployment`._
+_Updated 2026-09-15; verified against `main` and `staging-april-deployment`._
 
 ## Structure
 

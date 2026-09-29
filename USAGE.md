@@ -166,4 +166,4 @@ python3 -c "import hashlib; print(hashlib.sha256(bytes.fromhex('<preimage>')).he
 
 `register-relay`, `set-admin`, `update-config`, `withdraw-fees`, `pending-onramps`, `pending-offramps`,
 `set-test-timeouts`, `check-expired-swaps` and `expired-counts` are for whoever runs the bridge and need
-the admin, controller or relay identity. See `OPERATIONS.md` in the canister and relay repositories.
+the admin, controller or relay identity; they are not covered in this guide.
